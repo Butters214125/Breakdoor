@@ -1,12 +1,17 @@
 --[[
+    ========================================================================
     BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT
-    - Fly (GUI only - F key removed)
-    - Speed Boost (G key)
-    - ESP (GUI only - E key removed)
-    - Auto-TP to Presents/Airdrops (L key)
-    - Teleport Now button
-    - Draggable GUI with sliders
-    - Works with present-shaped airdrops
+    ========================================================================
+    Version: 2.0
+    Features:
+        - Fly (GUI only - F key removed)
+        - Speed Boost (G key)
+        - ESP (GUI only - E key removed)
+        - Auto-TP to Presents/Airdrops (L key)
+        - Teleport Now button
+        - Draggable GUI with sliders
+        - Works with present-shaped airdrops
+    ========================================================================
 ]]
 
 local player = game.Players.LocalPlayer
@@ -14,50 +19,62 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Settings (default values)
-local FLY_SPEED = 75
-local WALK_SPEED_MULTIPLIER = 10
-local MIN_FLY_SPEED = 10
-local MAX_FLY_SPEED = 200
-local MIN_WALK_MULTIPLIER = 1
-local MAX_WALK_MULTIPLIER = 25
-local TELEPORT_COOLDOWN = 3 -- Seconds between teleports
+-- ========================================================================
+--  CONFIGURATION
+-- ========================================================================
 
--- Variables
+local CONFIG = {
+    -- Speed settings
+    FLY_SPEED = 75,
+    WALK_SPEED_MULTIPLIER = 10,
+    MIN_FLY_SPEED = 10,
+    MAX_FLY_SPEED = 200,
+    MIN_WALK_MULTIPLIER = 1,
+    MAX_WALK_MULTIPLIER = 25,
+    
+    -- Teleport settings
+    TELEPORT_COOLDOWN = 3, -- Seconds between teleports
+    
+    -- Keybinds
+    KEYBINDS = {
+        speed = Enum.KeyCode.G,
+        autoLoot = Enum.KeyCode.L,
+    },
+}
+
+-- ========================================================================
+--  VARIABLES
+-- ========================================================================
+
 local flying = false
 local speedBoost = false
 local espEnabled = true
 local autoLootEnabled = false
 local defaultWalkSpeed = humanoid.WalkSpeed
-local currentFlySpeed = FLY_SPEED
-local currentWalkMultiplier = WALK_SPEED_MULTIPLIER
+local currentFlySpeed = CONFIG.FLY_SPEED
+local currentWalkMultiplier = CONFIG.WALK_SPEED_MULTIPLIER
 local lastTeleportTime = 0
-
--- ============ KEYBIND SYSTEM ============
-local keybinds = {
-    speed = Enum.KeyCode.G,        -- G = Toggle Speed
-    autoLoot = Enum.KeyCode.L,     -- L = Toggle Auto-Loot
-    -- ESP keybind REMOVED (GUI only)
-}
+local espObjects = {}
 
 print("🔑 Keybinds Loaded:")
 print("   G = Toggle Speed")
 print("   L = Toggle Auto-Loot (teleport to presents)")
 print("   ESP = GUI Button ONLY (E key removed)")
+print("   Fly = GUI Button ONLY (F key removed)")
 
--- ============ AIRDROP SYSTEM (PRESENT SHAPED) ============
+-- ========================================================================
+--  AIRDROP SYSTEM (PRESENT SHAPED)
+-- ========================================================================
 
--- Find all airdrops/presents
 local function findAirdrops()
     local airdrops = {}
     
     for _, obj in ipairs(workspace:GetDescendants()) do
-        -- Check if it's a present/airdrop by name
         if obj:IsA("BasePart") or obj:IsA("Model") then
             local name = obj.Name:lower()
             local parentName = obj.Parent and obj.Parent.Name:lower() or ""
             
-            -- Check for various present/airdrop names
+            -- Check for present/airdrop names
             if name:find("present") or 
                name:find("gift") or 
                name:find("airdrop") or 
@@ -95,7 +112,6 @@ local function findAirdrops()
     return airdrops
 end
 
--- Find nearest airdrop/present
 local function findNearestAirdrop()
     local airdrops = findAirdrops()
     local nearest = nil
@@ -145,15 +161,14 @@ local function findNearestAirdrop()
     return nearest, nearestDist
 end
 
--- Teleport to airdrop/present
 local function teleportToAirdrop(airdrop)
     if not airdrop or not airdrop.Parent then 
         return false, "Airdrop not found"
     end
     
     local currentTime = tick()
-    if currentTime - lastTeleportTime < TELEPORT_COOLDOWN then
-        return false, "Cooldown: " .. math.ceil(TELEPORT_COOLDOWN - (currentTime - lastTeleportTime)) .. "s"
+    if currentTime - lastTeleportTime < CONFIG.TELEPORT_COOLDOWN then
+        return false, "Cooldown: " .. math.ceil(CONFIG.TELEPORT_COOLDOWN - (currentTime - lastTeleportTime)) .. "s"
     end
     
     local teleportPos = nil
@@ -189,7 +204,6 @@ local function teleportToAirdrop(airdrop)
         return false, "Could not find airdrop position"
     end
     
-    -- Teleport
     rootPart.CFrame = CFrame.new(teleportPos)
     lastTeleportTime = currentTime
     
@@ -231,15 +245,16 @@ task.spawn(function()
             else
                 statusLabel.Text = "❌ No presents found!"
             end
-            task.wait(TELEPORT_COOLDOWN)
+            task.wait(CONFIG.TELEPORT_COOLDOWN)
         else
             task.wait(1)
         end
     end
 end)
 
--- ============ ESP SYSTEM ============
-local espObjects = {}
+-- ========================================================================
+--  ESP SYSTEM
+-- ========================================================================
 
 local function createESP(targetPlayer)
     if targetPlayer == player then return end
@@ -420,7 +435,10 @@ game.Players.PlayerRemoving:Connect(function(leavingPlayer)
     removeESP(leavingPlayer)
 end)
 
--- ============ FLY SYSTEM ============
+-- ========================================================================
+--  FLY SYSTEM
+-- ========================================================================
+
 local bodyVelocity = nil
 local bodyGyro = nil
 
@@ -460,7 +478,10 @@ local function stopFly()
     flying = false
 end
 
--- ============ CREATE DRAGGABLE GUI ============
+-- ========================================================================
+--  CREATE GUI
+-- ========================================================================
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player.PlayerGui
 screenGui.Name = "BreakDoorGUI"
@@ -666,7 +687,7 @@ teleportNowButton.Font = Enum.Font.GothamBold
 
 -- ============ STATUS LABEL ============
 
-local statusLabel = Instance.new("TextLabel")
+statusLabel = Instance.new("TextLabel")
 statusLabel.Parent = mainFrame
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Status: Ready | Press L for Auto-Loot"
@@ -677,10 +698,12 @@ statusLabel.Size = UDim2.new(1, 0, 0, 20)
 statusLabel.Position = UDim2.new(0, 0, 0.90, 0)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 
--- ============ SLIDER FUNCTIONS ============
+-- ========================================================================
+--  SLIDER FUNCTIONS
+-- ========================================================================
 
 local function updateFlySlider(value)
-    local percent = (value - MIN_FLY_SPEED) / (MAX_FLY_SPEED - MIN_FLY_SPEED)
+    local percent = (value - CONFIG.MIN_FLY_SPEED) / (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED)
     flySliderFill.Size = UDim2.new(percent, 0, 1, 0)
     flySliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
     flySpeedValue.Text = tostring(math.round(value))
@@ -689,7 +712,7 @@ local function updateFlySlider(value)
 end
 
 local function updateWalkSlider(value)
-    local percent = (value - MIN_WALK_MULTIPLIER) / (MAX_WALK_MULTIPLIER - MIN_WALK_MULTIPLIER)
+    local percent = (value - CONFIG.MIN_WALK_MULTIPLIER) / (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER)
     walkSliderFill.Size = UDim2.new(percent, 0, 1, 0)
     walkSliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
     walkSpeedValue.Text = tostring(math.round(value)) .. "x"
@@ -718,7 +741,7 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
         local sliderSize = flySlider.AbsoluteSize
         
         local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
-        local value = MIN_FLY_SPEED + (MAX_FLY_SPEED - MIN_FLY_SPEED) * percent
+        local value = CONFIG.MIN_FLY_SPEED + (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED) * percent
         updateFlySlider(value)
     end
 end)
@@ -740,12 +763,14 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
         local sliderSize = walkSlider.AbsoluteSize
         
         local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
-        local value = MIN_WALK_MULTIPLIER + (MAX_WALK_MULTIPLIER - MIN_WALK_MULTIPLIER) * percent
+        local value = CONFIG.MIN_WALK_MULTIPLIER + (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER) * percent
         updateWalkSlider(math.round(value))
     end
 end)
 
--- ============ TOGGLE FUNCTIONS ============
+-- ========================================================================
+--  TOGGLE FUNCTIONS
+-- ========================================================================
 
 local function toggleFly()
     if flying then
@@ -794,8 +819,7 @@ end
 flyButton.MouseButton1Click:Connect(toggleFly)
 speedButton.MouseButton1Click:Connect(toggleSpeed)
 
--- ESP Button click
-espButton.MouseButton1Click:Connect(function()
+-- ESP Button clickespButton.MouseButton1Click:Connect(function()
     toggleESP()
     espButton.Text = espEnabled and "👁️ ESP: ON" or "👁️ ESP: OFF"
     espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)
@@ -819,19 +843,20 @@ teleportNowButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ============ KEYBIND SYSTEM ============
--- ESP keybind REMOVED - GUI only!
+-- ========================================================================
+--  KEYBINDS
+-- ========================================================================
 
 game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     -- G = Toggle Speed
-    if input.KeyCode == keybinds.speed then
+    if input.KeyCode == CONFIG.KEYBINDS.speed then
         toggleSpeed()
     end
     
     -- L = Toggle Auto-Loot
-    if input.KeyCode == keybinds.autoLoot then
+    if input.KeyCode == CONFIG.KEYBINDS.autoLoot then
         toggleAutoLoot()
     end
     
@@ -839,7 +864,9 @@ game:GetService("UserInputService").InputBegan:Connect(function(input, gameProce
     -- NOTE: F key does NOTHING (Fly is GUI only)
 end)
 
--- ============ FLY MOVEMENT ============
+-- ========================================================================
+--  FLY MOVEMENT
+-- ========================================================================
 
 game:GetService("RunService").Heartbeat:Connect(function()
     if flying and character and character.Parent then
@@ -898,7 +925,9 @@ game:GetService("RunService").Heartbeat:Connect(function()
     end
 end)
 
--- ============ CHARACTER RESPAWN ============
+-- ========================================================================
+--  CHARACTER RESPAWN
+-- ========================================================================
 
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
@@ -924,9 +953,13 @@ player.CharacterAdded:Connect(function(newCharacter)
     statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
 end)
 
+-- ========================================================================
+--  INITIALIZATION
+-- ========================================================================
+
 -- Initial slider setup
-updateFlySlider(FLY_SPEED)
-updateWalkSlider(WALK_SPEED_MULTIPLIER)
+updateFlySlider(CONFIG.FLY_SPEED)
+updateWalkSlider(CONFIG.WALK_SPEED_MULTIPLIER)
 
 -- Initial ESP setup
 task.wait(1)

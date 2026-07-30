@@ -1,18 +1,7 @@
 --[[
-    ========================================================================
     BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (FIXED)
-    ========================================================================
     Version: 2.1
-    Fixed: Syntax error (extra 'end' removed)
-    Features:
-        - Fly (GUI only - F key removed)
-        - Speed Boost (G key)
-        - ESP (GUI only - E key removed)
-        - Auto-TP to Presents/Airdrops (L key)
-        - Teleport Now button
-        - Draggable GUI with sliders
-        - Works with present-shaped airdrops
-    ========================================================================
+    Fixed: Extra 'end' removed causing syntax error
 ]]
 
 local player = game.Players.LocalPlayer
@@ -20,33 +9,22 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- ========================================================================
---  CONFIGURATION
--- ========================================================================
-
+-- CONFIGURATION
 local CONFIG = {
-    -- Speed settings
     FLY_SPEED = 75,
     WALK_SPEED_MULTIPLIER = 10,
     MIN_FLY_SPEED = 10,
     MAX_FLY_SPEED = 200,
     MIN_WALK_MULTIPLIER = 1,
     MAX_WALK_MULTIPLIER = 25,
-    
-    -- Teleport settings
-    TELEPORT_COOLDOWN = 3, -- Seconds between teleports
-    
-    -- Keybinds
+    TELEPORT_COOLDOWN = 3,
     KEYBINDS = {
         speed = Enum.KeyCode.G,
         autoLoot = Enum.KeyCode.L,
     },
 }
 
--- ========================================================================
---  VARIABLES
--- ========================================================================
-
+-- VARIABLES
 local flying = false
 local speedBoost = false
 local espEnabled = true
@@ -57,35 +35,18 @@ local currentWalkMultiplier = CONFIG.WALK_SPEED_MULTIPLIER
 local lastTeleportTime = 0
 local espObjects = {}
 
-print("🔑 Keybinds Loaded:")
-print("   G = Toggle Speed")
-print("   L = Toggle Auto-Loot (teleport to presents)")
-print("   ESP = GUI Button ONLY (E key removed)")
-print("   Fly = GUI Button ONLY (F key removed)")
+print("🔑 Keybinds: G=Speed, L=Auto-Loot | Fly/ESP = GUI only")
 
--- ========================================================================
---  AIRDROP SYSTEM (PRESENT SHAPED)
--- ========================================================================
-
+-- ============ AIRDROP SYSTEM ============
 local function findAirdrops()
     local airdrops = {}
-    
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") or obj:IsA("Model") then
             local name = obj.Name:lower()
             local parentName = obj.Parent and obj.Parent.Name:lower() or ""
-            
-            -- Check for present/airdrop names
-            if name:find("present") or 
-               name:find("gift") or 
-               name:find("airdrop") or 
-               name:find("crate") or
-               name:find("drop") or
-               name:find("box") or
-               parentName:find("present") or
-               parentName:find("gift") or
-               parentName:find("airdrop") then
-                
+            if name:find("present") or name:find("gift") or name:find("airdrop") or 
+               name:find("crate") or name:find("drop") or name:find("box") or
+               parentName:find("present") or parentName:find("gift") or parentName:find("airdrop") then
                 if obj:IsA("Model") then
                     table.insert(airdrops, obj)
                 elseif obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") then
@@ -94,8 +55,6 @@ local function findAirdrops()
                     table.insert(airdrops, obj)
                 end
             end
-            
-            -- Check for red/green colored parts (look like presents)
             if obj:IsA("BasePart") and obj.BrickColor then
                 local color = obj.BrickColor.Name:lower()
                 if (color:find("red") or color:find("green") or color:find("gold") or color:find("orange")) and 
@@ -109,7 +68,6 @@ local function findAirdrops()
             end
         end
     end
-    
     return airdrops
 end
 
@@ -117,20 +75,15 @@ local function findNearestAirdrop()
     local airdrops = findAirdrops()
     local nearest = nil
     local nearestDist = math.huge
-    
     for _, airdrop in ipairs(airdrops) do
         if airdrop and airdrop.Parent then
             local airdropPos = nil
-            
             if airdrop:IsA("BasePart") then
                 airdropPos = airdrop.Position
             elseif airdrop:IsA("Model") then
-                local primaryPart = airdrop:FindFirstChild("Head") or 
-                                   airdrop:FindFirstChild("HumanoidRootPart") or
-                                   airdrop:FindFirstChild("MainPart") or
-                                   airdrop:FindFirstChild("RootPart") or
+                local primaryPart = airdrop:FindFirstChild("Head") or airdrop:FindFirstChild("HumanoidRootPart") or
+                                   airdrop:FindFirstChild("MainPart") or airdrop:FindFirstChild("RootPart") or
                                    airdrop:FindFirstChild("Part")
-                
                 if primaryPart then
                     airdropPos = primaryPart.Position
                 else
@@ -138,8 +91,7 @@ local function findNearestAirdrop()
                     if modelCFrame then
                         airdropPos = modelCFrame.Position
                     else
-                        local parts = airdrop:GetChildren()
-                        for _, part in ipairs(parts) do
+                        for _, part in ipairs(airdrop:GetChildren()) do
                             if part:IsA("BasePart") then
                                 airdropPos = part.Position
                                 break
@@ -148,7 +100,6 @@ local function findNearestAirdrop()
                     end
                 end
             end
-            
             if airdropPos and rootPart then
                 local dist = (rootPart.Position - airdropPos).Magnitude
                 if dist < nearestDist then
@@ -158,31 +109,22 @@ local function findNearestAirdrop()
             end
         end
     end
-    
     return nearest, nearestDist
 end
 
 local function teleportToAirdrop(airdrop)
-    if not airdrop or not airdrop.Parent then 
-        return false, "Airdrop not found"
-    end
-    
+    if not airdrop or not airdrop.Parent then return false, "Airdrop not found" end
     local currentTime = tick()
     if currentTime - lastTeleportTime < CONFIG.TELEPORT_COOLDOWN then
         return false, "Cooldown: " .. math.ceil(CONFIG.TELEPORT_COOLDOWN - (currentTime - lastTeleportTime)) .. "s"
     end
-    
     local teleportPos = nil
-    
     if airdrop:IsA("BasePart") then
         teleportPos = airdrop.Position + Vector3.new(0, 5, 0)
     elseif airdrop:IsA("Model") then
-        local primaryPart = airdrop:FindFirstChild("Head") or 
-                           airdrop:FindFirstChild("HumanoidRootPart") or
-                           airdrop:FindFirstChild("MainPart") or
-                           airdrop:FindFirstChild("RootPart") or
+        local primaryPart = airdrop:FindFirstChild("Head") or airdrop:FindFirstChild("HumanoidRootPart") or
+                           airdrop:FindFirstChild("MainPart") or airdrop:FindFirstChild("RootPart") or
                            airdrop:FindFirstChild("Part")
-        
         if primaryPart then
             teleportPos = primaryPart.Position + Vector3.new(0, 5, 0)
         else
@@ -190,8 +132,7 @@ local function teleportToAirdrop(airdrop)
             if modelCFrame then
                 teleportPos = modelCFrame.Position + Vector3.new(0, 5, 0)
             else
-                local parts = airdrop:GetChildren()
-                for _, part in ipairs(parts) do
+                for _, part in ipairs(airdrop:GetChildren()) do
                     if part:IsA("BasePart") then
                         teleportPos = part.Position + Vector3.new(0, 5, 0)
                         break
@@ -200,15 +141,9 @@ local function teleportToAirdrop(airdrop)
             end
         end
     end
-    
-    if not teleportPos then
-        return false, "Could not find airdrop position"
-    end
-    
+    if not teleportPos then return false, "Could not find airdrop position" end
     rootPart.CFrame = CFrame.new(teleportPos)
     lastTeleportTime = currentTime
-    
-    -- Visual effect
     local effect = Instance.new("Part")
     effect.Name = "TeleportEffect"
     effect.Size = Vector3.new(10, 10, 10)
@@ -219,7 +154,6 @@ local function teleportToAirdrop(airdrop)
     effect.Material = Enum.Material.Neon
     effect.Transparency = 0.5
     effect.Parent = workspace
-    
     game:GetService("Debris"):AddItem(effect, 0.5)
     for i = 1, 10 do
         effect.Transparency = effect.Transparency + 0.05
@@ -227,45 +161,16 @@ local function teleportToAirdrop(airdrop)
         task.wait(0.05)
     end
     effect:Destroy()
-    
     return true, "Teleported successfully!"
 end
 
--- Auto-Loot loop
-task.spawn(function()
-    while true do
-        if autoLootEnabled then
-            local airdrop, dist = findNearestAirdrop()
-            if airdrop then
-                local success, message = teleportToAirdrop(airdrop)
-                if success then
-                    statusLabel.Text = "📍 Teleported to present! (" .. math.floor(dist or 0) .. "m)"
-                else
-                    statusLabel.Text = "⏳ " .. message
-                end
-            else
-                statusLabel.Text = "❌ No presents found!"
-            end
-            task.wait(CONFIG.TELEPORT_COOLDOWN)
-        else
-            task.wait(1)
-        end
-    end
-end)
-
--- ========================================================================
---  ESP SYSTEM
--- ========================================================================
-
+-- ============ ESP SYSTEM ============
 local function createESP(targetPlayer)
     if targetPlayer == player then return end
     if espObjects[targetPlayer] then return end
-    
     local targetCharacter = targetPlayer.Character
     if not targetCharacter then return end
-    
     local espData = {}
-    
     local highlight = Instance.new("Highlight")
     highlight.Parent = targetCharacter
     highlight.FillColor = Color3.new(1, 0, 0)
@@ -273,13 +178,11 @@ local function createESP(targetPlayer)
     highlight.OutlineColor = Color3.new(1, 1, 0)
     highlight.OutlineTransparency = 0.1
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    
     local billboard = Instance.new("BillboardGui")
     billboard.Parent = targetCharacter:WaitForChild("Head")
     billboard.Size = UDim2.new(0, 200, 0, 50)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
-    
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Parent = billboard
     nameLabel.BackgroundTransparency = 1
@@ -290,7 +193,6 @@ local function createESP(targetPlayer)
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.TextStrokeTransparency = 0.3
     nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-    
     local distLabel = Instance.new("TextLabel")
     distLabel.Parent = billboard
     distLabel.BackgroundTransparency = 1
@@ -302,7 +204,6 @@ local function createESP(targetPlayer)
     distLabel.Font = Enum.Font.Gotham
     distLabel.TextStrokeTransparency = 0.3
     distLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-    
     local healthBg = Instance.new("Frame")
     healthBg.Parent = billboard
     healthBg.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
@@ -310,14 +211,12 @@ local function createESP(targetPlayer)
     healthBg.Size = UDim2.new(1, 0, 0.15, 0)
     healthBg.Position = UDim2.new(0, 0, 0, -0.2)
     healthBg.BorderSizePixel = 0
-    
     local healthBar = Instance.new("Frame")
     healthBar.Parent = healthBg
     healthBar.BackgroundColor3 = Color3.new(0, 1, 0)
     healthBar.BackgroundTransparency = 0.1
     healthBar.Size = UDim2.new(1, 0, 1, 0)
     healthBar.BorderSizePixel = 0
-    
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Parent = healthBg
     healthLabel.BackgroundTransparency = 1
@@ -327,14 +226,12 @@ local function createESP(targetPlayer)
     healthLabel.TextSize = 11
     healthLabel.Font = Enum.Font.GothamBold
     healthLabel.TextStrokeTransparency = 0.5
-    
     local function updateHealth()
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if targetHumanoid and targetHumanoid.Health then
             local healthPercent = targetHumanoid.Health / targetHumanoid.MaxHealth
             healthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
             healthLabel.Text = math.floor(targetHumanoid.Health) .. "%"
-            
             if healthPercent > 0.6 then
                 healthBar.BackgroundColor3 = Color3.new(0, 1, 0)
             elseif healthPercent > 0.3 then
@@ -344,14 +241,12 @@ local function createESP(targetPlayer)
             end
         end
     end
-    
     local function updateDistance()
         if character and character:FindFirstChild("HumanoidRootPart") then
             local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
             if targetRoot then
                 local distance = (rootPart.Position - targetRoot.Position).Magnitude
                 distLabel.Text = math.floor(distance) .. "m"
-                
                 if distance < 50 then
                     distLabel.TextColor3 = Color3.new(1, 0.2, 0.2)
                 elseif distance < 100 then
@@ -362,7 +257,6 @@ local function createESP(targetPlayer)
             end
         end
     end
-    
     espData.highlight = highlight
     espData.billboard = billboard
     espData.healthBar = healthBar
@@ -371,10 +265,8 @@ local function createESP(targetPlayer)
     espData.updateHealth = updateHealth
     espData.updateDistance = updateDistance
     espData.targetPlayer = targetPlayer
-    
     espObjects[targetPlayer] = espData
     updateHealth()
-    
     return espData
 end
 
@@ -396,24 +288,21 @@ end
 
 local function toggleESP()
     espEnabled = not espEnabled
-    
     if espEnabled then
         for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
             if targetPlayer ~= player then
                 createESP(targetPlayer)
             end
         end
-        print("👁️ ESP: ON")
+        print("ESP: ON")
     else
         clearAllESP()
-        print("👁️ ESP: OFF")
+        print("ESP: OFF")
     end
 end
 
--- Update ESP loop
 game:GetService("RunService").Heartbeat:Connect(function()
     if not espEnabled then return end
-    
     for targetPlayer, espData in pairs(espObjects) do
         if targetPlayer and targetPlayer.Character and targetPlayer.Character.Parent then
             espData.updateHealth()
@@ -424,7 +313,6 @@ game:GetService("RunService").Heartbeat:Connect(function()
     end
 end)
 
--- Handle new players
 game.Players.PlayerAdded:Connect(function(newPlayer)
     if espEnabled and newPlayer ~= player then
         task.wait(1)
@@ -436,53 +324,37 @@ game.Players.PlayerRemoving:Connect(function(leavingPlayer)
     removeESP(leavingPlayer)
 end)
 
--- ========================================================================
---  FLY SYSTEM
--- ========================================================================
-
+-- ============ FLY SYSTEM ============
 local bodyVelocity = nil
 local bodyGyro = nil
 
 local function startFly()
     if bodyVelocity then bodyVelocity:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
-    
     bodyVelocity = Instance.new("BodyVelocity")
     bodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
     bodyVelocity.P = 1000
     bodyVelocity.Parent = rootPart
-    
     bodyGyro = Instance.new("BodyGyro")
     bodyGyro.MaxTorque = Vector3.new(400000, 400000, 400000)
     bodyGyro.P = 10000
     bodyGyro.CFrame = rootPart.CFrame
     bodyGyro.Parent = rootPart
-    
     humanoid.PlatformStand = true
     humanoid.Sit = false
     humanoid.AutoRotate = false
-    
     flying = true
 end
 
 local function stopFly()
-    if bodyVelocity then 
-        bodyVelocity:Destroy() 
-        bodyVelocity = nil
-    end
-    if bodyGyro then 
-        bodyGyro:Destroy() 
-        bodyGyro = nil
-    end
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
     humanoid.PlatformStand = false
     humanoid.AutoRotate = true
     flying = false
 end
 
--- ========================================================================
---  CREATE GUI
--- ========================================================================
-
+-- ============ GUI ============
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player.PlayerGui
 screenGui.Name = "BreakDoorGUI"
@@ -500,7 +372,6 @@ mainFrame.Active = true
 mainFrame.Draggable = true
 mainFrame.Selectable = true
 
--- Title Bar
 local titleBar = Instance.new("Frame")
 titleBar.Parent = mainFrame
 titleBar.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
@@ -533,8 +404,7 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui.Enabled = false
 end)
 
--- ============ FLY BUTTON & SLIDER ============
-
+-- FLY BUTTON
 local flyButton = Instance.new("TextButton")
 flyButton.Parent = mainFrame
 flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
@@ -590,8 +460,7 @@ flySliderButton.Position = UDim2.new(0.5, -7, -0.6, 0)
 flySliderButton.Text = ""
 flySliderButton.AutoButtonColor = false
 
--- ============ SPEED BUTTON & SLIDER ============
-
+-- SPEED BUTTON
 local speedButton = Instance.new("TextButton")
 speedButton.Parent = mainFrame
 speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
@@ -647,8 +516,7 @@ walkSliderButton.Position = UDim2.new(0.4, -7, -0.6, 0)
 walkSliderButton.Text = ""
 walkSliderButton.AutoButtonColor = false
 
--- ============ ESP BUTTON ============
-
+-- ESP BUTTON
 local espButton = Instance.new("TextButton")
 espButton.Parent = mainFrame
 espButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.8)
@@ -660,8 +528,7 @@ espButton.TextColor3 = Color3.new(1, 1, 1)
 espButton.TextSize = 15
 espButton.Font = Enum.Font.GothamBold
 
--- ============ AUTO-LOOT BUTTON ============
-
+-- AUTO-LOOT BUTTON
 local autoLootButton = Instance.new("TextButton")
 autoLootButton.Parent = mainFrame
 autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
@@ -673,8 +540,7 @@ autoLootButton.TextColor3 = Color3.new(1, 1, 1)
 autoLootButton.TextSize = 14
 autoLootButton.Font = Enum.Font.GothamBold
 
--- ============ TELEPORT NOW BUTTON ============
-
+-- TELEPORT NOW BUTTON
 local teleportNowButton = Instance.new("TextButton")
 teleportNowButton.Parent = mainFrame
 teleportNowButton.BackgroundColor3 = Color3.new(0.2, 0.4, 1)
@@ -686,8 +552,7 @@ teleportNowButton.TextColor3 = Color3.new(1, 1, 1)
 teleportNowButton.TextSize = 13
 teleportNowButton.Font = Enum.Font.GothamBold
 
--- ============ STATUS LABEL ============
-
+-- STATUS LABEL
 statusLabel = Instance.new("TextLabel")
 statusLabel.Parent = mainFrame
 statusLabel.BackgroundTransparency = 1
@@ -699,10 +564,29 @@ statusLabel.Size = UDim2.new(1, 0, 0, 20)
 statusLabel.Position = UDim2.new(0, 0, 0.90, 0)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 
--- ========================================================================
---  SLIDER FUNCTIONS
--- ========================================================================
+-- ============ AUTO-LOOT LOOP ============
+task.spawn(function()
+    while true do
+        if autoLootEnabled then
+            local airdrop, dist = findNearestAirdrop()
+            if airdrop then
+                local success, message = teleportToAirdrop(airdrop)
+                if success then
+                    statusLabel.Text = "📍 Teleported to present! (" .. math.floor(dist or 0) .. "m)"
+                else
+                    statusLabel.Text = "⏳ " .. message
+                end
+            else
+                statusLabel.Text = "❌ No presents found!"
+            end
+            task.wait(CONFIG.TELEPORT_COOLDOWN)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
+-- ============ SLIDER FUNCTIONS ============
 local function updateFlySlider(value)
     local percent = (value - CONFIG.MIN_FLY_SPEED) / (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED)
     flySliderFill.Size = UDim2.new(percent, 0, 1, 0)
@@ -719,60 +603,43 @@ local function updateWalkSlider(value)
     walkSpeedValue.Text = tostring(math.round(value)) .. "x"
     walkSpeedLabel.Text = "Walk Multiplier: " .. tostring(math.round(value)) .. "x"
     currentWalkMultiplier = value
-    
     if speedBoost then
         humanoid.WalkSpeed = defaultWalkSpeed * value
     end
 end
 
--- Fly Slider Dragging
+-- Slider dragging
 local flyDragging = false
-flySliderButton.MouseButton1Down:Connect(function()
-    flyDragging = true
-end)
-
-flySliderButton.MouseButton1Up:Connect(function()
-    flyDragging = false
-end)
+flySliderButton.MouseButton1Down:Connect(function() flyDragging = true end)
+flySliderButton.MouseButton1Up:Connect(function() flyDragging = false end)
 
 game:GetService("UserInputService").InputChanged:Connect(function(input)
     if flyDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local mousePos = input.Position
         local sliderAbsPos = flySlider.AbsolutePosition
         local sliderSize = flySlider.AbsoluteSize
-        
         local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
         local value = CONFIG.MIN_FLY_SPEED + (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED) * percent
         updateFlySlider(value)
     end
 end)
 
--- Walk Slider Dragging
 local walkDragging = false
-walkSliderButton.MouseButton1Down:Connect(function()
-    walkDragging = true
-end)
-
-walkSliderButton.MouseButton1Up:Connect(function()
-    walkDragging = false
-end)
+walkSliderButton.MouseButton1Down:Connect(function() walkDragging = true end)
+walkSliderButton.MouseButton1Up:Connect(function() walkDragging = false end)
 
 game:GetService("UserInputService").InputChanged:Connect(function(input)
     if walkDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local mousePos = input.Position
         local sliderAbsPos = walkSlider.AbsolutePosition
         local sliderSize = walkSlider.AbsoluteSize
-        
         local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
         local value = CONFIG.MIN_WALK_MULTIPLIER + (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER) * percent
         updateWalkSlider(math.round(value))
     end
 end)
 
--- ========================================================================
---  TOGGLE FUNCTIONS
--- ========================================================================
-
+-- ============ TOGGLE FUNCTIONS ============
 local function toggleFly()
     if flying then
         stopFly()
@@ -791,7 +658,6 @@ end
 
 local function toggleSpeed()
     speedBoost = not speedBoost
-    
     if speedBoost then
         humanoid.WalkSpeed = defaultWalkSpeed * currentWalkMultiplier
         speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": ON"
@@ -807,30 +673,24 @@ local function toggleAutoLoot()
     autoLootEnabled = not autoLootEnabled
     autoLootButton.Text = autoLootEnabled and "📦 Auto-TP Presents: ON" or "📦 Auto-TP Presents: OFF"
     autoLootButton.BackgroundColor3 = autoLootEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.8, 0.6, 0)
-    
     if autoLootEnabled then
         statusLabel.Text = "🎁 Auto-Loot: ON - Teleporting to presents!"
     else
         statusLabel.Text = "🎁 Auto-Loot: OFF"
     end
-    print("🎁 Auto-Loot: " .. (autoLootEnabled and "ON" or "OFF"))
 end
 
--- Button clicks
 flyButton.MouseButton1Click:Connect(toggleFly)
 speedButton.MouseButton1Click:Connect(toggleSpeed)
 
--- ESP Button click
 espButton.MouseButton1Click:Connect(function()
     toggleESP()
     espButton.Text = espEnabled and "👁️ ESP: ON" or "👁️ ESP: OFF"
     espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)
 end)
 
--- Auto-Loot Button click
 autoLootButton.MouseButton1Click:Connect(toggleAutoLoot)
 
--- Teleport Now Button click
 teleportNowButton.MouseButton1Click:Connect(function()
     local airdrop, dist = findNearestAirdrop()
     if airdrop then
@@ -845,31 +705,18 @@ teleportNowButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ========================================================================
---  KEYBINDS
--- ========================================================================
-
+-- ============ KEYBINDS ============
 game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    
-    -- G = Toggle Speed
     if input.KeyCode == CONFIG.KEYBINDS.speed then
         toggleSpeed()
     end
-    
-    -- L = Toggle Auto-Loot
     if input.KeyCode == CONFIG.KEYBINDS.autoLoot then
         toggleAutoLoot()
     end
-    
-    -- NOTE: E key does NOTHING (ESP is GUI only)
-    -- NOTE: F key does NOTHING (Fly is GUI only)
 end)
 
--- ========================================================================
---  FLY MOVEMENT
--- ========================================================================
-
+-- ============ FLY MOVEMENT ============
 game:GetService("RunService").Heartbeat:Connect(function()
     if flying and character and character.Parent then
         if not bodyVelocity or not bodyVelocity.Parent then
@@ -878,73 +725,43 @@ game:GetService("RunService").Heartbeat:Connect(function()
             bodyVelocity.P = 1000
             bodyVelocity.Parent = rootPart
         end
-        
         if not bodyGyro or not bodyGyro.Parent then
             bodyGyro = Instance.new("BodyGyro")
             bodyGyro.MaxTorque = Vector3.new(400000, 400000, 400000)
             bodyGyro.P = 10000
             bodyGyro.Parent = rootPart
         end
-        
         bodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(0, 1, 0))
-        
         local camera = workspace.CurrentCamera
         local moveDirection = Vector3.new(0, 0, 0)
-        
         local forward = camera.CFrame.LookVector
         local right = camera.CFrame.RightVector
-        local up = camera.CFrame.UpVector
-        
         forward = Vector3.new(forward.X, 0, forward.Z).Unit
         right = Vector3.new(right.X, 0, right.Z).Unit
-        
         local userInput = game:GetService("UserInputService")
-        
-        if userInput:IsKeyDown(Enum.KeyCode.W) then
-            moveDirection = moveDirection + forward
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.S) then
-            moveDirection = moveDirection - forward
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.A) then
-            moveDirection = moveDirection - right
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.D) then
-            moveDirection = moveDirection + right
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.Space) then
-            moveDirection = moveDirection + Vector3.new(0, 1, 0)
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then
-            moveDirection = moveDirection - Vector3.new(0, 1, 0)
-        end
-        
+        if userInput:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + forward end
+        if userInput:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - forward end
+        if userInput:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - right end
+        if userInput:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + right end
+        if userInput:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0, 1, 0) end
+        if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection - Vector3.new(0, 1, 0) end
         if moveDirection.Magnitude > 0 then
             moveDirection = moveDirection.Unit * currentFlySpeed
         end
-        
         bodyVelocity.Velocity = moveDirection
     end
 end)
 
--- ========================================================================
---  CHARACTER RESPAWN
--- ========================================================================
-
+-- ============ CHARACTER RESPAWN ============
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     defaultWalkSpeed = humanoid.WalkSpeed
-    
-    if flying then
-        stopFly()
-    end
-    
+    if flying then stopFly() end
     speedBoost = false
     autoLootEnabled = false
     humanoid.WalkSpeed = defaultWalkSpeed
-    
     flyButton.Text = "✈️ Fly: OFF"
     flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
     speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
@@ -955,15 +772,10 @@ player.CharacterAdded:Connect(function(newCharacter)
     statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
 end)
 
--- ========================================================================
---  INITIALIZATION
--- ========================================================================
-
--- Initial slider setup
+-- ============ INITIALIZATION ============
 updateFlySlider(CONFIG.FLY_SPEED)
 updateWalkSlider(CONFIG.WALK_SPEED_MULTIPLIER)
 
--- Initial ESP setup
 task.wait(1)
 for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
     if targetPlayer ~= player then
@@ -971,26 +783,13 @@ for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
     end
 end
 
-print("✅ BreakDoor COMPLETE Script Loaded!")
-print("🟢 === FEATURES ===")
-print("🟢 Fly: GUI Button ONLY (F key removed)")
-print("🟢 Speed Toggle: G key OR GUI Button")
-print("🟢 ESP: GUI Button ONLY (E key removed)")
-print("🟢 Auto-Loot: L key OR GUI Button (Teleports to presents)")
-print("🟢 Teleport Now: GUI Button (Instant teleport)")
-print("🟢 Drag sliders to adjust speeds")
-print("🟢 Drag the title bar to move GUI")
-print("")
-print("🎁 Searching for presents/airdrops...")
+print("✅ BreakDoor Script Loaded!")
+print("🟢 Fly: GUI only | Speed: G | Auto-Loot: L")
+print("🟢 ESP: GUI only | Sliders: Drag to adjust")
 
--- Find and display presents on load
-task.wait(0.5)
 local airdrops = findAirdrops()
 if #airdrops > 0 then
     print("✅ Found " .. #airdrops .. " presents/airdrops!")
 else
-    print("⚠️ No presents found. Make sure they're named:")
-    print("   - 'Present', 'Gift', 'Airdrop'")
-    print("   - 'Crate', 'Box', 'Drop'")
-    print("   - Or red/green colored parts with Size > 3")
+    print("⚠️ No presents found. Check names: Present, Gift, Airdrop, Crate, Box, Drop")
 end

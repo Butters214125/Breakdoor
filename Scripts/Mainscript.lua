@@ -1,8 +1,9 @@
 --[[
     ========================================================================
-    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT
+    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (FIXED)
     ========================================================================
-    Version: 2.0
+    Version: 2.1
+    Fixed: Syntax error (extra 'end' removed)
     Features:
         - Fly (GUI only - F key removed)
         - Speed Boost (G key)
@@ -819,7 +820,8 @@ end
 flyButton.MouseButton1Click:Connect(toggleFly)
 speedButton.MouseButton1Click:Connect(toggleSpeed)
 
--- ESP Button clickespButton.MouseButton1Click:Connect(function()
+-- ESP Button click
+espButton.MouseButton1Click:Connect(function()
     toggleESP()
     espButton.Text = espEnabled and "👁️ ESP: ON" or "👁️ ESP: OFF"
     espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)

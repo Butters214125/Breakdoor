@@ -1,14 +1,10 @@
 --[[
-    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (VISION MODE)
-    Version: 2.3
-    Features:
-        - Fly (GUI only - F key removed)
-        - Speed Boost (G key)
-        - ESP (GUI only - E key removed)
-        - Auto-TP to Presents (L key) - WORKS WITH "Gift" MODELS
-        - Teleport Now button
-        - No Clip (N key) - Phase through walls like Vision!
-        - Draggable GUI with sliders
+    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (FULLY FIXED)
+    Version: 2.4
+    Fixes:
+        - Speed lock (bugs can't slow you down)
+        - Auto-ESP refresh (bugs always visible)
+        - Persistent GUI (stays on death)
 ]]
 
 local player = game.Players.LocalPlayer
@@ -49,9 +45,39 @@ local currentFlySpeed = CONFIG.FLY_SPEED
 local currentWalkMultiplier = CONFIG.WALK_SPEED_MULTIPLIER
 local lastTeleportTime = 0
 local espObjects = {}
+local guiCreated = false
 
 print("🔑 Keybinds: G=Speed, L=Auto-Loot, N=NoClip | Fly/ESP = GUI only")
-print("🎁 Looking for 'Gift' models inside 'Airdropbox_XX'...")
+print("🎁 Looking for 'Gift' models...")
+
+-- ========================================================================
+--  SPEED LOCK (Prevents bugs from slowing you down)
+-- ========================================================================
+
+local function lockSpeed()
+    if speedBoost then
+        humanoid.WalkSpeed = defaultWalkSpeed * currentWalkMultiplier
+    else
+        humanoid.WalkSpeed = defaultWalkSpeed
+    end
+end
+
+-- Lock speed every frame
+game:GetService("RunService").Heartbeat:Connect(function()
+    if speedBoost and humanoid then
+        local targetSpeed = defaultWalkSpeed * currentWalkMultiplier
+        if humanoid.WalkSpeed ~= targetSpeed then
+            humanoid.WalkSpeed = targetSpeed
+        end
+    elseif humanoid and humanoid.WalkSpeed ~= defaultWalkSpeed then
+        humanoid.WalkSpeed = defaultWalkSpeed
+    end
+end)
+
+-- Also lock when speed changes
+humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+    lockSpeed()
+end)
 
 -- ========================================================================
 --  NO CLIP SYSTEM
@@ -78,7 +104,7 @@ local function toggleNoclip()
     end
 end
 
--- Keep No Clip active (prevents it from resetting)
+-- Keep No Clip active
 game:GetService("RunService").Heartbeat:Connect(function()
     if noclipEnabled and player.Character then
         local char = player.Character
@@ -98,28 +124,23 @@ local function findAirdrops()
     local airdrops = {}
     
     for _, obj in ipairs(workspace:GetDescendants()) do
-        -- Look for "Gift" models (your presents!)
         if obj:IsA("Model") and obj.Name == "Gift" then
             table.insert(airdrops, obj)
         end
         
-        -- Look for "Gift" parts
         if obj:IsA("BasePart") and obj.Name == "Gift" then
             table.insert(airdrops, obj)
         end
         
-        -- Look inside Airdropbox models
         if obj:IsA("Model") and string.find(obj.Name, "Airdropbox") then
             for _, child in ipairs(obj:GetChildren()) do
                 if child.Name == "Gift" then
                     table.insert(airdrops, child)
                 end
             end
-            -- Also add the Airdropbox itself as fallback
             table.insert(airdrops, obj)
         end
         
-        -- Check for other gift-related names (fallback)
         if obj:IsA("Model") then
             local name = obj.Name:lower()
             if string.find(name, "gift") or string.find(name, "present") or 
@@ -144,7 +165,6 @@ local function findNearestAirdrop()
             if airdrop:IsA("BasePart") then
                 airdropPos = airdrop.Position
             elseif airdrop:IsA("Model") then
-                -- Try to find a part inside the model
                 local primaryPart = airdrop:FindFirstChild("Head") or 
                                    airdrop:FindFirstChild("HumanoidRootPart") or
                                    airdrop:FindFirstChild("MainPart") or
@@ -227,11 +247,9 @@ local function teleportToAirdrop(airdrop)
         return false, "Could not find airdrop position"
     end
     
-    -- Teleport
     rootPart.CFrame = CFrame.new(teleportPos)
     lastTeleportTime = currentTime
     
-    -- Visual effect
     local effect = Instance.new("Part")
     effect.Name = "TeleportEffect"
     effect.Size = Vector3.new(10, 10, 10)
@@ -277,7 +295,7 @@ task.spawn(function()
 end)
 
 -- ========================================================================
---  ESP SYSTEM
+--  ESP SYSTEM (Auto-refresh on respawn)
 -- ========================================================================
 
 local function createESP(targetPlayer)
@@ -417,15 +435,21 @@ local function clearAllESP()
     espObjects = {}
 end
 
+local function refreshESP()
+    if not espEnabled then return end
+    clearAllESP()
+    for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
+        if targetPlayer ~= player then
+            createESP(targetPlayer)
+        end
+    end
+end
+
 local function toggleESP()
     espEnabled = not espEnabled
     
     if espEnabled then
-        for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
-            if targetPlayer ~= player then
-                createESP(targetPlayer)
-            end
-        end
+        refreshESP()
         print("👁️ ESP: ON")
     else
         clearAllESP()
@@ -447,7 +471,7 @@ game:GetService("RunService").Heartbeat:Connect(function()
     end
 end)
 
--- Handle new players
+-- Auto-refresh ESP when players respawn
 game.Players.PlayerAdded:Connect(function(newPlayer)
     if espEnabled and newPlayer ~= player then
         task.wait(1)
@@ -458,6 +482,17 @@ end)
 game.Players.PlayerRemoving:Connect(function(leavingPlayer)
     removeESP(leavingPlayer)
 end)
+
+-- Watch for character changes (respawns)
+local function onCharacterChanged()
+    task.wait(0.5)
+    if espEnabled then
+        refreshESP()
+        print("👁️ ESP refreshed after respawn!")
+    end
+end
+
+player.CharacterAdded:Connect(onCharacterChanged)
 
 -- ========================================================================
 --  FLY SYSTEM
@@ -503,390 +538,422 @@ local function stopFly()
 end
 
 -- ========================================================================
---  CREATE GUI
+--  CREATE GUI (PERSISTENT - Stays on death)
 -- ========================================================================
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = player.PlayerGui
-screenGui.Name = "BreakDoorGUI"
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Parent = screenGui
-mainFrame.BackgroundColor3 = Color3.new(0.08, 0.08, 0.12)
-mainFrame.BackgroundTransparency = 0.05
-mainFrame.BorderColor3 = Color3.new(0.3, 0.8, 1)
-mainFrame.BorderSizePixel = 2
-mainFrame.Size = UDim2.new(0, 280, 0, 380)
-mainFrame.Position = UDim2.new(0, 20, 0, 100)
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Selectable = true
-
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Parent = mainFrame
-titleBar.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
-titleBar.BorderSizePixel = 0
-titleBar.Size = UDim2.new(1, 0, 0, 28)
-titleBar.Position = UDim2.new(0, 0, 0, 0)
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Parent = titleBar
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "✈️ BreakDoor Controls"
-titleLabel.TextColor3 = Color3.new(1, 1, 1)
-titleLabel.TextSize = 14
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.Size = UDim2.new(1, 0, 1, 0)
-titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local closeButton = Instance.new("TextButton")
-closeButton.Parent = titleBar
-closeButton.BackgroundColor3 = Color3.new(0.8, 0.1, 0.1)
-closeButton.BorderSizePixel = 0
-closeButton.Size = UDim2.new(0, 25, 1, -2)
-closeButton.Position = UDim2.new(1, -27, 0, 1)
-closeButton.Text = "✕"
-closeButton.TextColor3 = Color3.new(1, 1, 1)
-closeButton.TextSize = 14
-closeButton.Font = Enum.Font.GothamBold
-closeButton.MouseButton1Click:Connect(function()
-    screenGui.Enabled = false
-end)
-
--- ============ FLY BUTTON & SLIDER ============
-
-local flyButton = Instance.new("TextButton")
-flyButton.Parent = mainFrame
-flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-flyButton.BorderSizePixel = 0
-flyButton.Size = UDim2.new(0.9, 0, 0, 32)
-flyButton.Position = UDim2.new(0.05, 0, 0.08, 0)
-flyButton.Text = "✈️ Fly: OFF"
-flyButton.TextColor3 = Color3.new(1, 1, 1)
-flyButton.TextSize = 15
-flyButton.Font = Enum.Font.GothamBold
-
-local flySpeedLabel = Instance.new("TextLabel")
-flySpeedLabel.Parent = mainFrame
-flySpeedLabel.BackgroundTransparency = 1
-flySpeedLabel.Text = "Fly Speed: 75"
-flySpeedLabel.TextColor3 = Color3.new(0.8, 0.8, 1)
-flySpeedLabel.TextSize = 12
-flySpeedLabel.Font = Enum.Font.Gotham
-flySpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
-flySpeedLabel.Position = UDim2.new(0.05, 0, 0.20, 0)
-flySpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local flySpeedValue = Instance.new("TextLabel")
-flySpeedValue.Parent = mainFrame
-flySpeedValue.BackgroundTransparency = 1
-flySpeedValue.Text = "75"
-flySpeedValue.TextColor3 = Color3.new(0.3, 0.8, 1)
-flySpeedValue.TextSize = 14
-flySpeedValue.Font = Enum.Font.GothamBold
-flySpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
-flySpeedValue.Position = UDim2.new(0.8, 0, 0.20, 0)
-flySpeedValue.TextXAlignment = Enum.TextXAlignment.Right
-
-local flySlider = Instance.new("Frame")
-flySlider.Parent = mainFrame
-flySlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
-flySlider.BorderSizePixel = 0
-flySlider.Size = UDim2.new(0.8, 0, 0, 6)
-flySlider.Position = UDim2.new(0.1, 0, 0.24, 0)
-
-local flySliderFill = Instance.new("Frame")
-flySliderFill.Parent = flySlider
-flySliderFill.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-flySliderFill.BorderSizePixel = 0
-flySliderFill.Size = UDim2.new(0.5, 0, 1, 0)
-
-local flySliderButton = Instance.new("TextButton")
-flySliderButton.Parent = flySlider
-flySliderButton.BackgroundColor3 = Color3.new(0.3, 0.8, 1)
-flySliderButton.BorderSizePixel = 0
-flySliderButton.Size = UDim2.new(0, 14, 0, 14)
-flySliderButton.Position = UDim2.new(0.5, -7, -0.6, 0)
-flySliderButton.Text = ""
-flySliderButton.AutoButtonColor = false
-
--- ============ SPEED BUTTON & SLIDER ============
-
-local speedButton = Instance.new("TextButton")
-speedButton.Parent = mainFrame
-speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
-speedButton.BorderSizePixel = 0
-speedButton.Size = UDim2.new(0.9, 0, 0, 32)
-speedButton.Position = UDim2.new(0.05, 0, 0.32, 0)
-speedButton.Text = "🏃 Speed x10: OFF"
-speedButton.TextColor3 = Color3.new(1, 1, 1)
-speedButton.TextSize = 15
-speedButton.Font = Enum.Font.GothamBold
-
-local walkSpeedLabel = Instance.new("TextLabel")
-walkSpeedLabel.Parent = mainFrame
-walkSpeedLabel.BackgroundTransparency = 1
-walkSpeedLabel.Text = "Walk Multiplier: 10x"
-walkSpeedLabel.TextColor3 = Color3.new(0.8, 1, 0.8)
-walkSpeedLabel.TextSize = 12
-walkSpeedLabel.Font = Enum.Font.Gotham
-walkSpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
-walkSpeedLabel.Position = UDim2.new(0.05, 0, 0.44, 0)
-walkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local walkSpeedValue = Instance.new("TextLabel")
-walkSpeedValue.Parent = mainFrame
-walkSpeedValue.BackgroundTransparency = 1
-walkSpeedValue.Text = "10x"
-walkSpeedValue.TextColor3 = Color3.new(0.3, 0.9, 0.3)
-walkSpeedValue.TextSize = 14
-walkSpeedValue.Font = Enum.Font.GothamBold
-walkSpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
-walkSpeedValue.Position = UDim2.new(0.8, 0, 0.44, 0)
-walkSpeedValue.TextXAlignment = Enum.TextXAlignment.Right
-
-local walkSlider = Instance.new("Frame")
-walkSlider.Parent = mainFrame
-walkSlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
-walkSlider.BorderSizePixel = 0
-walkSlider.Size = UDim2.new(0.8, 0, 0, 6)
-walkSlider.Position = UDim2.new(0.1, 0, 0.48, 0)
-
-local walkSliderFill = Instance.new("Frame")
-walkSliderFill.Parent = walkSlider
-walkSliderFill.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
-walkSliderFill.BorderSizePixel = 0
-walkSliderFill.Size = UDim2.new(0.4, 0, 1, 0)
-
-local walkSliderButton = Instance.new("TextButton")
-walkSliderButton.Parent = walkSlider
-walkSliderButton.BackgroundColor3 = Color3.new(0.3, 0.9, 0.3)
-walkSliderButton.BorderSizePixel = 0
-walkSliderButton.Size = UDim2.new(0, 14, 0, 14)
-walkSliderButton.Position = UDim2.new(0.4, -7, -0.6, 0)
-walkSliderButton.Text = ""
-walkSliderButton.AutoButtonColor = false
-
--- ============ ESP BUTTON ============
-
-local espButton = Instance.new("TextButton")
-espButton.Parent = mainFrame
-espButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.8)
-espButton.BorderSizePixel = 0
-espButton.Size = UDim2.new(0.9, 0, 0, 32)
-espButton.Position = UDim2.new(0.05, 0, 0.56, 0)
-espButton.Text = "👁️ ESP: ON"
-espButton.TextColor3 = Color3.new(1, 1, 1)
-espButton.TextSize = 15
-espButton.Font = Enum.Font.GothamBold
-
--- ============ NO CLIP BUTTON ============
-
-local noclipButton = Instance.new("TextButton")
-noclipButton.Parent = mainFrame
-noclipButton.BackgroundColor3 = Color3.new(0.4, 0.2, 0.8)
-noclipButton.BorderSizePixel = 0
-noclipButton.Size = UDim2.new(0.9, 0, 0, 32)
-noclipButton.Position = UDim2.new(0.05, 0, 0.68, 0)
-noclipButton.Text = "👻 No Clip: OFF"
-noclipButton.TextColor3 = Color3.new(1, 1, 1)
-noclipButton.TextSize = 15
-noclipButton.Font = Enum.Font.GothamBold
-
--- ============ AUTO-LOOT BUTTON ============
-
-local autoLootButton = Instance.new("TextButton")
-autoLootButton.Parent = mainFrame
-autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
-autoLootButton.BorderSizePixel = 0
-autoLootButton.Size = UDim2.new(0.9, 0, 0, 32)
-autoLootButton.Position = UDim2.new(0.05, 0, 0.80, 0)
-autoLootButton.Text = "🎁 Auto-TP Presents: OFF"
-autoLootButton.TextColor3 = Color3.new(1, 1, 1)
-autoLootButton.TextSize = 14
-autoLootButton.Font = Enum.Font.GothamBold
-
--- ============ TELEPORT NOW BUTTON ============
-
-local teleportNowButton = Instance.new("TextButton")
-teleportNowButton.Parent = mainFrame
-teleportNowButton.BackgroundColor3 = Color3.new(0.2, 0.4, 1)
-teleportNowButton.BorderSizePixel = 0
-teleportNowButton.Size = UDim2.new(0.9, 0, 0, 28)
-teleportNowButton.Position = UDim2.new(0.05, 0, 0.91, 0)
-teleportNowButton.Text = "📍 Teleport to Nearest Present NOW"
-teleportNowButton.TextColor3 = Color3.new(1, 1, 1)
-teleportNowButton.TextSize = 13
-teleportNowButton.Font = Enum.Font.GothamBold
-
--- ============ STATUS LABEL ============
-
-statusLabel = Instance.new("TextLabel")
-statusLabel.Parent = mainFrame
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Status: Ready | N=NoClip"
-statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
-statusLabel.TextSize = 11
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.Size = UDim2.new(1, 0, 0, 20)
-statusLabel.Position = UDim2.new(0, 0, 0.96, 0)
-statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-
--- ========================================================================
---  SLIDER FUNCTIONS
--- ========================================================================
-
-local function updateFlySlider(value)
-    local percent = (value - CONFIG.MIN_FLY_SPEED) / (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED)
-    flySliderFill.Size = UDim2.new(percent, 0, 1, 0)
-    flySliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
-    flySpeedValue.Text = tostring(math.round(value))
-    flySpeedLabel.Text = "Fly Speed: " .. tostring(math.round(value))
-    currentFlySpeed = value
-end
-
-local function updateWalkSlider(value)
-    local percent = (value - CONFIG.MIN_WALK_MULTIPLIER) / (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER)
-    walkSliderFill.Size = UDim2.new(percent, 0, 1, 0)
-    walkSliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
-    walkSpeedValue.Text = tostring(math.round(value)) .. "x"
-    walkSpeedLabel.Text = "Walk Multiplier: " .. tostring(math.round(value)) .. "x"
-    currentWalkMultiplier = value
-    
-    if speedBoost then
-        humanoid.WalkSpeed = defaultWalkSpeed * value
+local function createGUI()
+    -- Check if GUI already exists
+    local existingGUI = player.PlayerGui:FindFirstChild("BreakDoorGUI")
+    if existingGUI then
+        existingGUI:Destroy()
     end
-end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Parent = player.PlayerGui
+    screenGui.Name = "BreakDoorGUI"
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.ResetOnSpawn = false -- THIS KEEPS IT ON DEATH!
 
--- Fly Slider Dragging
-local flyDragging = false
-flySliderButton.MouseButton1Down:Connect(function()
-    flyDragging = true
-end)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Parent = screenGui
+    mainFrame.BackgroundColor3 = Color3.new(0.08, 0.08, 0.12)
+    mainFrame.BackgroundTransparency = 0.05
+    mainFrame.BorderColor3 = Color3.new(0.3, 0.8, 1)
+    mainFrame.BorderSizePixel = 2
+    mainFrame.Size = UDim2.new(0, 280, 0, 380)
+    mainFrame.Position = UDim2.new(0, 20, 0, 100)
+    mainFrame.Active = true
+    mainFrame.Draggable = true
+    mainFrame.Selectable = true
 
-flySliderButton.MouseButton1Up:Connect(function()
-    flyDragging = false
-end)
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Parent = mainFrame
+    titleBar.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+    titleBar.BorderSizePixel = 0
+    titleBar.Size = UDim2.new(1, 0, 0, 28)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
 
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-    if flyDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = input.Position
-        local sliderAbsPos = flySlider.AbsolutePosition
-        local sliderSize = flySlider.AbsoluteSize
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Parent = titleBar
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "✈️ BreakDoor Controls"
+    titleLabel.TextColor3 = Color3.new(1, 1, 1)
+    titleLabel.TextSize = 14
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.Size = UDim2.new(1, 0, 1, 0)
+    titleLabel.Position = UDim2.new(0, 5, 0, 0)
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = titleBar
+    closeButton.BackgroundColor3 = Color3.new(0.8, 0.1, 0.1)
+    closeButton.BorderSizePixel = 0
+    closeButton.Size = UDim2.new(0, 25, 1, -2)
+    closeButton.Position = UDim2.new(1, -27, 0, 1)
+    closeButton.Text = "✕"
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.TextSize = 14
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.MouseButton1Click:Connect(function()
+        screenGui.Enabled = false
+    end)
+
+    -- ============ FLY BUTTON & SLIDER ============
+
+    local flyButton = Instance.new("TextButton")
+    flyButton.Parent = mainFrame
+    flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+    flyButton.BorderSizePixel = 0
+    flyButton.Size = UDim2.new(0.9, 0, 0, 32)
+    flyButton.Position = UDim2.new(0.05, 0, 0.08, 0)
+    flyButton.Text = "✈️ Fly: OFF"
+    flyButton.TextColor3 = Color3.new(1, 1, 1)
+    flyButton.TextSize = 15
+    flyButton.Font = Enum.Font.GothamBold
+
+    local flySpeedLabel = Instance.new("TextLabel")
+    flySpeedLabel.Parent = mainFrame
+    flySpeedLabel.BackgroundTransparency = 1
+    flySpeedLabel.Text = "Fly Speed: 75"
+    flySpeedLabel.TextColor3 = Color3.new(0.8, 0.8, 1)
+    flySpeedLabel.TextSize = 12
+    flySpeedLabel.Font = Enum.Font.Gotham
+    flySpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
+    flySpeedLabel.Position = UDim2.new(0.05, 0, 0.20, 0)
+    flySpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local flySpeedValue = Instance.new("TextLabel")
+    flySpeedValue.Parent = mainFrame
+    flySpeedValue.BackgroundTransparency = 1
+    flySpeedValue.Text = "75"
+    flySpeedValue.TextColor3 = Color3.new(0.3, 0.8, 1)
+    flySpeedValue.TextSize = 14
+    flySpeedValue.Font = Enum.Font.GothamBold
+    flySpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
+    flySpeedValue.Position = UDim2.new(0.8, 0, 0.20, 0)
+    flySpeedValue.TextXAlignment = Enum.TextXAlignment.Right
+
+    local flySlider = Instance.new("Frame")
+    flySlider.Parent = mainFrame
+    flySlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
+    flySlider.BorderSizePixel = 0
+    flySlider.Size = UDim2.new(0.8, 0, 0, 6)
+    flySlider.Position = UDim2.new(0.1, 0, 0.24, 0)
+
+    local flySliderFill = Instance.new("Frame")
+    flySliderFill.Parent = flySlider
+    flySliderFill.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+    flySliderFill.BorderSizePixel = 0
+    flySliderFill.Size = UDim2.new(0.5, 0, 1, 0)
+
+    local flySliderButton = Instance.new("TextButton")
+    flySliderButton.Parent = flySlider
+    flySliderButton.BackgroundColor3 = Color3.new(0.3, 0.8, 1)
+    flySliderButton.BorderSizePixel = 0
+    flySliderButton.Size = UDim2.new(0, 14, 0, 14)
+    flySliderButton.Position = UDim2.new(0.5, -7, -0.6, 0)
+    flySliderButton.Text = ""
+    flySliderButton.AutoButtonColor = false
+
+    -- ============ SPEED BUTTON & SLIDER ============
+
+    local speedButton = Instance.new("TextButton")
+    speedButton.Parent = mainFrame
+    speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
+    speedButton.BorderSizePixel = 0
+    speedButton.Size = UDim2.new(0.9, 0, 0, 32)
+    speedButton.Position = UDim2.new(0.05, 0, 0.32, 0)
+    speedButton.Text = "🏃 Speed x10: OFF"
+    speedButton.TextColor3 = Color3.new(1, 1, 1)
+    speedButton.TextSize = 15
+    speedButton.Font = Enum.Font.GothamBold
+
+    local walkSpeedLabel = Instance.new("TextLabel")
+    walkSpeedLabel.Parent = mainFrame
+    walkSpeedLabel.BackgroundTransparency = 1
+    walkSpeedLabel.Text = "Walk Multiplier: 10x"
+    walkSpeedLabel.TextColor3 = Color3.new(0.8, 1, 0.8)
+    walkSpeedLabel.TextSize = 12
+    walkSpeedLabel.Font = Enum.Font.Gotham
+    walkSpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
+    walkSpeedLabel.Position = UDim2.new(0.05, 0, 0.44, 0)
+    walkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local walkSpeedValue = Instance.new("TextLabel")
+    walkSpeedValue.Parent = mainFrame
+    walkSpeedValue.BackgroundTransparency = 1
+    walkSpeedValue.Text = "10x"
+    walkSpeedValue.TextColor3 = Color3.new(0.3, 0.9, 0.3)
+    walkSpeedValue.TextSize = 14
+    walkSpeedValue.Font = Enum.Font.GothamBold
+    walkSpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
+    walkSpeedValue.Position = UDim2.new(0.8, 0, 0.44, 0)
+    walkSpeedValue.TextXAlignment = Enum.TextXAlignment.Right
+
+    local walkSlider = Instance.new("Frame")
+    walkSlider.Parent = mainFrame
+    walkSlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
+    walkSlider.BorderSizePixel = 0
+    walkSlider.Size = UDim2.new(0.8, 0, 0, 6)
+    walkSlider.Position = UDim2.new(0.1, 0, 0.48, 0)
+
+    local walkSliderFill = Instance.new("Frame")
+    walkSliderFill.Parent = walkSlider
+    walkSliderFill.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
+    walkSliderFill.BorderSizePixel = 0
+    walkSliderFill.Size = UDim2.new(0.4, 0, 1, 0)
+
+    local walkSliderButton = Instance.new("TextButton")
+    walkSliderButton.Parent = walkSlider
+    walkSliderButton.BackgroundColor3 = Color3.new(0.3, 0.9, 0.3)
+    walkSliderButton.BorderSizePixel = 0
+    walkSliderButton.Size = UDim2.new(0, 14, 0, 14)
+    walkSliderButton.Position = UDim2.new(0.4, -7, -0.6, 0)
+    walkSliderButton.Text = ""
+    walkSliderButton.AutoButtonColor = false
+
+    -- ============ ESP BUTTON ============
+
+    local espButton = Instance.new("TextButton")
+    espButton.Parent = mainFrame
+    espButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.8)
+    espButton.BorderSizePixel = 0
+    espButton.Size = UDim2.new(0.9, 0, 0, 32)
+    espButton.Position = UDim2.new(0.05, 0, 0.56, 0)
+    espButton.Text = "👁️ ESP: ON"
+    espButton.TextColor3 = Color3.new(1, 1, 1)
+    espButton.TextSize = 15
+    espButton.Font = Enum.Font.GothamBold
+
+    -- ============ NO CLIP BUTTON ============
+
+    local noclipButton = Instance.new("TextButton")
+    noclipButton.Parent = mainFrame
+    noclipButton.BackgroundColor3 = Color3.new(0.4, 0.2, 0.8)
+    noclipButton.BorderSizePixel = 0
+    noclipButton.Size = UDim2.new(0.9, 0, 0, 32)
+    noclipButton.Position = UDim2.new(0.05, 0, 0.68, 0)
+    noclipButton.Text = "👻 No Clip: OFF"
+    noclipButton.TextColor3 = Color3.new(1, 1, 1)
+    noclipButton.TextSize = 15
+    noclipButton.Font = Enum.Font.GothamBold
+
+    -- ============ AUTO-LOOT BUTTON ============
+
+    local autoLootButton = Instance.new("TextButton")
+    autoLootButton.Parent = mainFrame
+    autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
+    autoLootButton.BorderSizePixel = 0
+    autoLootButton.Size = UDim2.new(0.9, 0, 0, 32)
+    autoLootButton.Position = UDim2.new(0.05, 0, 0.80, 0)
+    autoLootButton.Text = "🎁 Auto-TP Presents: OFF"
+    autoLootButton.TextColor3 = Color3.new(1, 1, 1)
+    autoLootButton.TextSize = 14
+    autoLootButton.Font = Enum.Font.GothamBold
+
+    -- ============ TELEPORT NOW BUTTON ============
+
+    local teleportNowButton = Instance.new("TextButton")
+    teleportNowButton.Parent = mainFrame
+    teleportNowButton.BackgroundColor3 = Color3.new(0.2, 0.4, 1)
+    teleportNowButton.BorderSizePixel = 0
+    teleportNowButton.Size = UDim2.new(0.9, 0, 0, 28)
+    teleportNowButton.Position = UDim2.new(0.05, 0, 0.91, 0)
+    teleportNowButton.Text = "📍 Teleport to Nearest Present NOW"
+    teleportNowButton.TextColor3 = Color3.new(1, 1, 1)
+    teleportNowButton.TextSize = 13
+    teleportNowButton.Font = Enum.Font.GothamBold
+
+    -- ============ STATUS LABEL ============
+
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Parent = mainFrame
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Status: Ready | N=NoClip"
+    statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
+    statusLabel.TextSize = 11
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.Size = UDim2.new(1, 0, 0, 20)
+    statusLabel.Position = UDim2.new(0, 0, 0.96, 0)
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+    -- ========================================================================
+    --  SLIDER FUNCTIONS
+    -- ========================================================================
+
+    local function updateFlySlider(value)
+        local percent = (value - CONFIG.MIN_FLY_SPEED) / (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED)
+        flySliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        flySliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
+        flySpeedValue.Text = tostring(math.round(value))
+        flySpeedLabel.Text = "Fly Speed: " .. tostring(math.round(value))
+        currentFlySpeed = value
+    end
+
+    local function updateWalkSlider(value)
+        local percent = (value - CONFIG.MIN_WALK_MULTIPLIER) / (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER)
+        walkSliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        walkSliderButton.Position = UDim2.new(percent, -7, -0.6, 0)
+        walkSpeedValue.Text = tostring(math.round(value)) .. "x"
+        walkSpeedLabel.Text = "Walk Multiplier: " .. tostring(math.round(value)) .. "x"
+        currentWalkMultiplier = value
         
-        local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
-        local value = CONFIG.MIN_FLY_SPEED + (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED) * percent
-        updateFlySlider(value)
-    end
-end)
-
--- Walk Slider Dragging
-local walkDragging = false
-walkSliderButton.MouseButton1Down:Connect(function()
-    walkDragging = true
-end)
-
-walkSliderButton.MouseButton1Up:Connect(function()
-    walkDragging = false
-end)
-
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-    if walkDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = input.Position
-        local sliderAbsPos = walkSlider.AbsolutePosition
-        local sliderSize = walkSlider.AbsoluteSize
-        
-        local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
-        local value = CONFIG.MIN_WALK_MULTIPLIER + (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER) * percent
-        updateWalkSlider(math.round(value))
-    end
-end)
-
--- ========================================================================
---  TOGGLE FUNCTIONS
--- ========================================================================
-
-local function toggleFly()
-    if flying then
-        stopFly()
-        flyButton.Text = "✈️ Fly: OFF"
-        flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-        statusLabel.Text = "Status: Grounded | N=NoClip"
-        statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
-    else
-        startFly()
-        flyButton.Text = "✈️ Fly: ON"
-        flyButton.BackgroundColor3 = Color3.new(0, 0.8, 0.2)
-        statusLabel.Text = "Status: Flying | N=NoClip"
-        statusLabel.TextColor3 = Color3.new(0, 1, 0)
-    end
-end
-
-local function toggleSpeed()
-    speedBoost = not speedBoost
-    
-    if speedBoost then
-        humanoid.WalkSpeed = defaultWalkSpeed * currentWalkMultiplier
-        speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": ON"
-        speedButton.BackgroundColor3 = Color3.new(0, 0.8, 0.2)
-    else
-        humanoid.WalkSpeed = defaultWalkSpeed
-        speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
-        speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
-    end
-end
-
-local function toggleAutoLoot()
-    autoLootEnabled = not autoLootEnabled
-    autoLootButton.Text = autoLootEnabled and "🎁 Auto-TP Presents: ON" or "🎁 Auto-TP Presents: OFF"
-    autoLootButton.BackgroundColor3 = autoLootEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.8, 0.6, 0)
-    
-    if autoLootEnabled then
-        statusLabel.Text = "🎁 Auto-Loot: ON - Teleporting to presents!"
-    else
-        statusLabel.Text = "🎁 Auto-Loot: OFF"
-    end
-    print("🎁 Auto-Loot: " .. (autoLootEnabled and "ON" or "OFF"))
-end
-
--- Button clicks
-flyButton.MouseButton1Click:Connect(toggleFly)
-speedButton.MouseButton1Click:Connect(toggleSpeed)
-
--- ESP Button click
-espButton.MouseButton1Click:Connect(function()
-    toggleESP()
-    espButton.Text = espEnabled and "👁️ ESP: ON" or "👁️ ESP: OFF"
-    espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)
-end)
-
--- No Clip Button click
-noclipButton.MouseButton1Click:Connect(function()
-    toggleNoclip()
-    noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
-    noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
-end)
-
--- Auto-Loot Button click
-autoLootButton.MouseButton1Click:Connect(toggleAutoLoot)
-
--- Teleport Now Button click
-teleportNowButton.MouseButton1Click:Connect(function()
-    local airdrop, dist = findNearestAirdrop()
-    if airdrop then
-        local success, message = teleportToAirdrop(airdrop)
-        if success then
-            statusLabel.Text = "📍 Teleported to " .. airdrop.Name .. "! (" .. math.floor(dist or 0) .. "m)"
-        else
-            statusLabel.Text = "❌ " .. message
+        if speedBoost then
+            humanoid.WalkSpeed = defaultWalkSpeed * value
         end
-    else
-        statusLabel.Text = "❌ No presents found!"
+    end
+
+    -- Fly Slider Dragging
+    local flyDragging = false
+    flySliderButton.MouseButton1Down:Connect(function()
+        flyDragging = true
+    end)
+
+    flySliderButton.MouseButton1Up:Connect(function()
+        flyDragging = false
+    end)
+
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if flyDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = input.Position
+            local sliderAbsPos = flySlider.AbsolutePosition
+            local sliderSize = flySlider.AbsoluteSize
+            
+            local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
+            local value = CONFIG.MIN_FLY_SPEED + (CONFIG.MAX_FLY_SPEED - CONFIG.MIN_FLY_SPEED) * percent
+            updateFlySlider(value)
+        end
+    end)
+
+    -- Walk Slider Dragging
+    local walkDragging = false
+    walkSliderButton.MouseButton1Down:Connect(function()
+        walkDragging = true
+    end)
+
+    walkSliderButton.MouseButton1Up:Connect(function()
+        walkDragging = false
+    end)
+
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if walkDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = input.Position
+            local sliderAbsPos = walkSlider.AbsolutePosition
+            local sliderSize = walkSlider.AbsoluteSize
+            
+            local percent = math.clamp((mousePos.X - sliderAbsPos.X) / sliderSize.X, 0, 1)
+            local value = CONFIG.MIN_WALK_MULTIPLIER + (CONFIG.MAX_WALK_MULTIPLIER - CONFIG.MIN_WALK_MULTIPLIER) * percent
+            updateWalkSlider(math.round(value))
+        end
+    end)
+
+    -- ========================================================================
+    --  TOGGLE FUNCTIONS
+    -- ========================================================================
+
+    local function toggleFly()
+        if flying then
+            stopFly()
+            flyButton.Text = "✈️ Fly: OFF"
+            flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+            statusLabel.Text = "Status: Grounded | N=NoClip"
+            statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
+        else
+            startFly()
+            flyButton.Text = "✈️ Fly: ON"
+            flyButton.BackgroundColor3 = Color3.new(0, 0.8, 0.2)
+            statusLabel.Text = "Status: Flying | N=NoClip"
+            statusLabel.TextColor3 = Color3.new(0, 1, 0)
+        end
+    end
+
+    local function toggleSpeed()
+        speedBoost = not speedBoost
+        
+        if speedBoost then
+            humanoid.WalkSpeed = defaultWalkSpeed * currentWalkMultiplier
+            speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": ON"
+            speedButton.BackgroundColor3 = Color3.new(0, 0.8, 0.2)
+        else
+            humanoid.WalkSpeed = defaultWalkSpeed
+            speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
+            speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
+        end
+    end
+
+    local function toggleAutoLoot()
+        autoLootEnabled = not autoLootEnabled
+        autoLootButton.Text = autoLootEnabled and "🎁 Auto-TP Presents: ON" or "🎁 Auto-TP Presents: OFF"
+        autoLootButton.BackgroundColor3 = autoLootEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.8, 0.6, 0)
+        
+        if autoLootEnabled then
+            statusLabel.Text = "🎁 Auto-Loot: ON - Teleporting to presents!"
+        else
+            statusLabel.Text = "🎁 Auto-Loot: OFF"
+        end
+        print("🎁 Auto-Loot: " .. (autoLootEnabled and "ON" or "OFF"))
+    end
+
+    -- Button clicks
+    flyButton.MouseButton1Click:Connect(toggleFly)
+    speedButton.MouseButton1Click:Connect(toggleSpeed)
+
+    -- ESP Button click
+    espButton.MouseButton1Click:Connect(function()
+        toggleESP()
+        espButton.Text = espEnabled and "👁️ ESP: ON" or "👁️ ESP: OFF"
+        espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)
+    end)
+
+    -- No Clip Button click
+    noclipButton.MouseButton1Click:Connect(function()
+        toggleNoclip()
+        noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
+        noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
+    end)
+
+    -- Auto-Loot Button click
+    autoLootButton.MouseButton1Click:Connect(toggleAutoLoot)
+
+    -- Teleport Now Button click
+    teleportNowButton.MouseButton1Click:Connect(function()
+        local airdrop, dist = findNearestAirdrop()
+        if airdrop then
+            local success, message = teleportToAirdrop(airdrop)
+            if success then
+                statusLabel.Text = "📍 Teleported to " .. airdrop.Name .. "! (" .. math.floor(dist or 0) .. "m)"
+            else
+                statusLabel.Text = "❌ " .. message
+            end
+        else
+            statusLabel.Text = "❌ No presents found!"
+        end
+    end)
+
+    -- Initial slider setup
+    updateFlySlider(CONFIG.FLY_SPEED)
+    updateWalkSlider(CONFIG.WALK_SPEED_MULTIPLIER)
+end
+
+-- ========================================================================
+--  CREATE PERSISTENT GUI
+-- ========================================================================
+
+-- Create GUI immediately
+createGUI()
+
+-- Recreate GUI on respawn if it disappears
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    -- Check if GUI still exists
+    if not player.PlayerGui:FindFirstChild("BreakDoorGUI") then
+        createGUI()
+        print("🔄 GUI recreated after respawn!")
     end
 end)
+
+print("✅ GUI is persistent - it will stay on death!")
 
 -- ========================================================================
 --  KEYBINDS
@@ -898,152 +965,61 @@ game:GetService("UserInputService").InputBegan:Connect(function(input, gameProce
     -- G = Toggle Speed
     if input.KeyCode == CONFIG.KEYBINDS.speed then
         toggleSpeed()
+        -- Update button text
+        local gui = player.PlayerGui:FindFirstChild("BreakDoorGUI")
+        if gui then
+            local speedBtn = gui:FindFirstChild("Frame"):FindFirstChild("speedButton")
+            if speedBtn then
+                speedBtn.Text = speedBoost and "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": ON" or "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
+                speedBtn.BackgroundColor3 = speedBoost and Color3.new(0, 0.8, 0.2) or Color3.new(0.2, 0.8, 0.3)
+            end
+        end
     end
     
     -- L = Toggle Auto-Loot
     if input.KeyCode == CONFIG.KEYBINDS.autoLoot then
         toggleAutoLoot()
+        local gui = player.PlayerGui:FindFirstChild("BreakDoorGUI")
+        if gui then
+            local lootBtn = gui:FindFirstChild("Frame"):FindFirstChild("autoLootButton")
+            if lootBtn then
+                lootBtn.Text = autoLootEnabled and "🎁 Auto-TP Presents: ON" or "🎁 Auto-TP Presents: OFF"
+                lootBtn.BackgroundColor3 = autoLootEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.8, 0.6, 0)
+            end
+        end
     end
     
     -- N = Toggle No Clip
     if input.KeyCode == CONFIG.KEYBINDS.noclip then
         toggleNoclip()
-        noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
-        noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
-    end
-    
-    -- NOTE: E key does NOTHING (ESP is GUI only)
-    -- NOTE: F key does NOTHING (Fly is GUI only)
-end)
-
--- ========================================================================
---  FLY MOVEMENT
--- ========================================================================
-
-game:GetService("RunService").Heartbeat:Connect(function()
-    if flying and character and character.Parent then
-        if not bodyVelocity or not bodyVelocity.Parent then
-            bodyVelocity = Instance.new("BodyVelocity")
-            bodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
-            bodyVelocity.P = 1000
-            bodyVelocity.Parent = rootPart
-        end
-        
-        if not bodyGyro or not bodyGyro.Parent then
-            bodyGyro = Instance.new("BodyGyro")
-            bodyGyro.MaxTorque = Vector3.new(400000, 400000, 400000)
-            bodyGyro.P = 10000
-            bodyGyro.Parent = rootPart
-        end
-        
-        bodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(0, 1, 0))
-        
-        local camera = workspace.CurrentCamera
-        local moveDirection = Vector3.new(0, 0, 0)
-        
-        local forward = camera.CFrame.LookVector
-        local right = camera.CFrame.RightVector
-        local up = camera.CFrame.UpVector
-        
-        forward = Vector3.new(forward.X, 0, forward.Z).Unit
-        right = Vector3.new(right.X, 0, right.Z).Unit
-        
-        local userInput = game:GetService("UserInputService")
-        
-        if userInput:IsKeyDown(Enum.KeyCode.W) then
-            moveDirection = moveDirection + forward
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.S) then
-            moveDirection = moveDirection - forward
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.A) then
-            moveDirection = moveDirection - right
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.D) then
-            moveDirection = moveDirection + right
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.Space) then
-            moveDirection = moveDirection + Vector3.new(0, 1, 0)
-        end
-        if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then
-            moveDirection = moveDirection - Vector3.new(0, 1, 0)
-        end
-        
-        if moveDirection.Magnitude > 0 then
-            moveDirection = moveDirection.Unit * currentFlySpeed
-        end
-        
-        bodyVelocity.Velocity = moveDirection
-    end
-end)
-
--- ========================================================================
---  CHARACTER RESPAWN
--- ========================================================================
-
-player.CharacterAdded:Connect(function(newCharacter)
-    character = newCharacter
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    defaultWalkSpeed = humanoid.WalkSpeed
-    
-    if flying then
-        stopFly()
-    end
-    
-    speedBoost = false
-    autoLootEnabled = false
-    humanoid.WalkSpeed = defaultWalkSpeed
-    
-    -- Re-apply No Clip if it was enabled
-    if noclipEnabled then
-        task.wait(0.5)
-        for _, part in ipairs(newCharacter:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
+        local gui = player.PlayerGui:FindFirstChild("BreakDoorGUI")
+        if gui then
+            local clipBtn = gui:FindFirstChild("Frame"):FindFirstChild("noclipButton")
+            if clipBtn then
+                clipBtn.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
+                clipBtn.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
             end
         end
-        print("👻 No Clip re-applied after respawn!")
     end
-    
-    flyButton.Text = "✈️ Fly: OFF"
-    flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-    speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
-    speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
-    autoLootButton.Text = "🎁 Auto-TP Presents: OFF"
-    autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
-    noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
-    noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
-    statusLabel.Text = "Status: Ready | N=NoClip"
-    statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
 end)
 
 -- ========================================================================
 --  INITIALIZATION
 -- ========================================================================
 
--- Initial slider setup
-updateFlySlider(CONFIG.FLY_SPEED)
-updateWalkSlider(CONFIG.WALK_SPEED_MULTIPLIER)
-
 -- Initial ESP setup
 task.wait(1)
-for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
-    if targetPlayer ~= player then
-        createESP(targetPlayer)
-    end
-end
+refreshESP()
 
 print("✅ BreakDoor COMPLETE Script Loaded!")
 print("🟢 === FEATURES ===")
 print("🟢 Fly: GUI Button ONLY (F key removed)")
-print("🟢 Speed Toggle: G key OR GUI Button")
-print("🟢 ESP: GUI Button ONLY (E key removed)")
+print("🟢 Speed Toggle: G key OR GUI Button (BUGS CAN'T SLOW YOU!)")
+print("🟢 ESP: GUI Button ONLY (E key removed) (AUTO-REFRESH!)")
 print("🟢 No Clip: N key OR GUI Button (Phase through walls!)")
 print("🟢 Auto-Loot: L key OR GUI Button (Teleports to 'Gift' models)")
 print("🟢 Teleport Now: GUI Button (Instant teleport)")
-print("🟢 Drag sliders to adjust speeds")
-print("🟢 Drag the title bar to move GUI")
+print("🟢 GUI: PERSISTENT - Stays on death!")
 print("")
 print("🎁 Searching for 'Gift' models...")
 
@@ -1060,4 +1036,6 @@ else
 end
 
 print("")
-print("👻 Press N to phase through walls like Vision!")
+print("🛡️ BUGS CAN'T SLOW YOU DOWN - Speed is LOCKED!")
+print("👁️ ESP AUTO-REFRESHES - Bugs always visible!")
+print("💀 GUI PERSISTENT - Stays on death!")

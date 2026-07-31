@@ -1,12 +1,13 @@
 --[[
-    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (FIXED)
-    Version: 2.2
+    BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (VISION MODE)
+    Version: 2.3
     Features:
         - Fly (GUI only - F key removed)
         - Speed Boost (G key)
         - ESP (GUI only - E key removed)
         - Auto-TP to Presents (L key) - WORKS WITH "Gift" MODELS
         - Teleport Now button
+        - No Clip (N key) - Phase through walls like Vision!
         - Draggable GUI with sliders
 ]]
 
@@ -30,6 +31,7 @@ local CONFIG = {
     KEYBINDS = {
         speed = Enum.KeyCode.G,
         autoLoot = Enum.KeyCode.L,
+        noclip = Enum.KeyCode.N,
     },
 }
 
@@ -41,14 +43,52 @@ local flying = false
 local speedBoost = false
 local espEnabled = true
 local autoLootEnabled = false
+local noclipEnabled = false
 local defaultWalkSpeed = humanoid.WalkSpeed
 local currentFlySpeed = CONFIG.FLY_SPEED
 local currentWalkMultiplier = CONFIG.WALK_SPEED_MULTIPLIER
 local lastTeleportTime = 0
 local espObjects = {}
 
-print("🔑 Keybinds: G=Speed, L=Auto-Loot | Fly/ESP = GUI only")
+print("🔑 Keybinds: G=Speed, L=Auto-Loot, N=NoClip | Fly/ESP = GUI only")
 print("🎁 Looking for 'Gift' models inside 'Airdropbox_XX'...")
+
+-- ========================================================================
+--  NO CLIP SYSTEM
+-- ========================================================================
+
+local function toggleNoclip()
+    noclipEnabled = not noclipEnabled
+    
+    local char = player.Character
+    if char then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = not noclipEnabled
+            end
+        end
+    end
+    
+    if noclipEnabled then
+        print("👻 No Clip: ON - Phasing through walls!")
+        statusLabel.Text = "👻 No Clip: ON - Phasing through walls!"
+    else
+        print("👻 No Clip: OFF")
+        statusLabel.Text = "👻 No Clip: OFF"
+    end
+end
+
+-- Keep No Clip active (prevents it from resetting)
+game:GetService("RunService").Heartbeat:Connect(function()
+    if noclipEnabled and player.Character then
+        local char = player.Character
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
 
 -- ========================================================================
 --  AIRDROP SYSTEM (FIXED FOR "GIFT" MODELS)
@@ -477,7 +517,7 @@ mainFrame.BackgroundColor3 = Color3.new(0.08, 0.08, 0.12)
 mainFrame.BackgroundTransparency = 0.05
 mainFrame.BorderColor3 = Color3.new(0.3, 0.8, 1)
 mainFrame.BorderSizePixel = 2
-mainFrame.Size = UDim2.new(0, 280, 0, 340)
+mainFrame.Size = UDim2.new(0, 280, 0, 380)
 mainFrame.Position = UDim2.new(0, 20, 0, 100)
 mainFrame.Active = true
 mainFrame.Draggable = true
@@ -523,7 +563,7 @@ flyButton.Parent = mainFrame
 flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
 flyButton.BorderSizePixel = 0
 flyButton.Size = UDim2.new(0.9, 0, 0, 32)
-flyButton.Position = UDim2.new(0.05, 0, 0.09, 0)
+flyButton.Position = UDim2.new(0.05, 0, 0.08, 0)
 flyButton.Text = "✈️ Fly: OFF"
 flyButton.TextColor3 = Color3.new(1, 1, 1)
 flyButton.TextSize = 15
@@ -537,7 +577,7 @@ flySpeedLabel.TextColor3 = Color3.new(0.8, 0.8, 1)
 flySpeedLabel.TextSize = 12
 flySpeedLabel.Font = Enum.Font.Gotham
 flySpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
-flySpeedLabel.Position = UDim2.new(0.05, 0, 0.21, 0)
+flySpeedLabel.Position = UDim2.new(0.05, 0, 0.20, 0)
 flySpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 local flySpeedValue = Instance.new("TextLabel")
@@ -548,7 +588,7 @@ flySpeedValue.TextColor3 = Color3.new(0.3, 0.8, 1)
 flySpeedValue.TextSize = 14
 flySpeedValue.Font = Enum.Font.GothamBold
 flySpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
-flySpeedValue.Position = UDim2.new(0.8, 0, 0.21, 0)
+flySpeedValue.Position = UDim2.new(0.8, 0, 0.20, 0)
 flySpeedValue.TextXAlignment = Enum.TextXAlignment.Right
 
 local flySlider = Instance.new("Frame")
@@ -556,7 +596,7 @@ flySlider.Parent = mainFrame
 flySlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
 flySlider.BorderSizePixel = 0
 flySlider.Size = UDim2.new(0.8, 0, 0, 6)
-flySlider.Position = UDim2.new(0.1, 0, 0.25, 0)
+flySlider.Position = UDim2.new(0.1, 0, 0.24, 0)
 
 local flySliderFill = Instance.new("Frame")
 flySliderFill.Parent = flySlider
@@ -580,7 +620,7 @@ speedButton.Parent = mainFrame
 speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
 speedButton.BorderSizePixel = 0
 speedButton.Size = UDim2.new(0.9, 0, 0, 32)
-speedButton.Position = UDim2.new(0.05, 0, 0.33, 0)
+speedButton.Position = UDim2.new(0.05, 0, 0.32, 0)
 speedButton.Text = "🏃 Speed x10: OFF"
 speedButton.TextColor3 = Color3.new(1, 1, 1)
 speedButton.TextSize = 15
@@ -594,7 +634,7 @@ walkSpeedLabel.TextColor3 = Color3.new(0.8, 1, 0.8)
 walkSpeedLabel.TextSize = 12
 walkSpeedLabel.Font = Enum.Font.Gotham
 walkSpeedLabel.Size = UDim2.new(0.4, 0, 0, 20)
-walkSpeedLabel.Position = UDim2.new(0.05, 0, 0.45, 0)
+walkSpeedLabel.Position = UDim2.new(0.05, 0, 0.44, 0)
 walkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 local walkSpeedValue = Instance.new("TextLabel")
@@ -605,7 +645,7 @@ walkSpeedValue.TextColor3 = Color3.new(0.3, 0.9, 0.3)
 walkSpeedValue.TextSize = 14
 walkSpeedValue.Font = Enum.Font.GothamBold
 walkSpeedValue.Size = UDim2.new(0.15, 0, 0, 20)
-walkSpeedValue.Position = UDim2.new(0.8, 0, 0.45, 0)
+walkSpeedValue.Position = UDim2.new(0.8, 0, 0.44, 0)
 walkSpeedValue.TextXAlignment = Enum.TextXAlignment.Right
 
 local walkSlider = Instance.new("Frame")
@@ -613,7 +653,7 @@ walkSlider.Parent = mainFrame
 walkSlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
 walkSlider.BorderSizePixel = 0
 walkSlider.Size = UDim2.new(0.8, 0, 0, 6)
-walkSlider.Position = UDim2.new(0.1, 0, 0.49, 0)
+walkSlider.Position = UDim2.new(0.1, 0, 0.48, 0)
 
 local walkSliderFill = Instance.new("Frame")
 walkSliderFill.Parent = walkSlider
@@ -637,11 +677,24 @@ espButton.Parent = mainFrame
 espButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.8)
 espButton.BorderSizePixel = 0
 espButton.Size = UDim2.new(0.9, 0, 0, 32)
-espButton.Position = UDim2.new(0.05, 0, 0.57, 0)
+espButton.Position = UDim2.new(0.05, 0, 0.56, 0)
 espButton.Text = "👁️ ESP: ON"
 espButton.TextColor3 = Color3.new(1, 1, 1)
 espButton.TextSize = 15
 espButton.Font = Enum.Font.GothamBold
+
+-- ============ NO CLIP BUTTON ============
+
+local noclipButton = Instance.new("TextButton")
+noclipButton.Parent = mainFrame
+noclipButton.BackgroundColor3 = Color3.new(0.4, 0.2, 0.8)
+noclipButton.BorderSizePixel = 0
+noclipButton.Size = UDim2.new(0.9, 0, 0, 32)
+noclipButton.Position = UDim2.new(0.05, 0, 0.68, 0)
+noclipButton.Text = "👻 No Clip: OFF"
+noclipButton.TextColor3 = Color3.new(1, 1, 1)
+noclipButton.TextSize = 15
+noclipButton.Font = Enum.Font.GothamBold
 
 -- ============ AUTO-LOOT BUTTON ============
 
@@ -650,7 +703,7 @@ autoLootButton.Parent = mainFrame
 autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
 autoLootButton.BorderSizePixel = 0
 autoLootButton.Size = UDim2.new(0.9, 0, 0, 32)
-autoLootButton.Position = UDim2.new(0.05, 0, 0.69, 0)
+autoLootButton.Position = UDim2.new(0.05, 0, 0.80, 0)
 autoLootButton.Text = "🎁 Auto-TP Presents: OFF"
 autoLootButton.TextColor3 = Color3.new(1, 1, 1)
 autoLootButton.TextSize = 14
@@ -663,7 +716,7 @@ teleportNowButton.Parent = mainFrame
 teleportNowButton.BackgroundColor3 = Color3.new(0.2, 0.4, 1)
 teleportNowButton.BorderSizePixel = 0
 teleportNowButton.Size = UDim2.new(0.9, 0, 0, 28)
-teleportNowButton.Position = UDim2.new(0.05, 0, 0.81, 0)
+teleportNowButton.Position = UDim2.new(0.05, 0, 0.91, 0)
 teleportNowButton.Text = "📍 Teleport to Nearest Present NOW"
 teleportNowButton.TextColor3 = Color3.new(1, 1, 1)
 teleportNowButton.TextSize = 13
@@ -674,12 +727,12 @@ teleportNowButton.Font = Enum.Font.GothamBold
 statusLabel = Instance.new("TextLabel")
 statusLabel.Parent = mainFrame
 statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Status: Ready | Press L for Auto-Loot"
+statusLabel.Text = "Status: Ready | N=NoClip"
 statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
 statusLabel.TextSize = 11
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.Size = UDim2.new(1, 0, 0, 20)
-statusLabel.Position = UDim2.new(0, 0, 0.90, 0)
+statusLabel.Position = UDim2.new(0, 0, 0.96, 0)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 -- ========================================================================
@@ -761,13 +814,13 @@ local function toggleFly()
         stopFly()
         flyButton.Text = "✈️ Fly: OFF"
         flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-        statusLabel.Text = "Status: Grounded | Press L for Auto-Loot"
+        statusLabel.Text = "Status: Grounded | N=NoClip"
         statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
     else
         startFly()
         flyButton.Text = "✈️ Fly: ON"
         flyButton.BackgroundColor3 = Color3.new(0, 0.8, 0.2)
-        statusLabel.Text = "Status: Flying | Press L for Auto-Loot"
+        statusLabel.Text = "Status: Flying | N=NoClip"
         statusLabel.TextColor3 = Color3.new(0, 1, 0)
     end
 end
@@ -810,6 +863,13 @@ espButton.MouseButton1Click:Connect(function()
     espButton.BackgroundColor3 = espEnabled and Color3.new(0.8, 0.2, 0.8) or Color3.new(0.3, 0.3, 0.3)
 end)
 
+-- No Clip Button click
+noclipButton.MouseButton1Click:Connect(function()
+    toggleNoclip()
+    noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
+    noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
+end)
+
 -- Auto-Loot Button click
 autoLootButton.MouseButton1Click:Connect(toggleAutoLoot)
 
@@ -843,6 +903,13 @@ game:GetService("UserInputService").InputBegan:Connect(function(input, gameProce
     -- L = Toggle Auto-Loot
     if input.KeyCode == CONFIG.KEYBINDS.autoLoot then
         toggleAutoLoot()
+    end
+    
+    -- N = Toggle No Clip
+    if input.KeyCode == CONFIG.KEYBINDS.noclip then
+        toggleNoclip()
+        noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
+        noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
     end
     
     -- NOTE: E key does NOTHING (ESP is GUI only)
@@ -928,13 +995,26 @@ player.CharacterAdded:Connect(function(newCharacter)
     autoLootEnabled = false
     humanoid.WalkSpeed = defaultWalkSpeed
     
+    -- Re-apply No Clip if it was enabled
+    if noclipEnabled then
+        task.wait(0.5)
+        for _, part in ipairs(newCharacter:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+        print("👻 No Clip re-applied after respawn!")
+    end
+    
     flyButton.Text = "✈️ Fly: OFF"
     flyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
     speedButton.Text = "🏃 Speed x" .. tostring(math.round(currentWalkMultiplier)) .. ": OFF"
     speedButton.BackgroundColor3 = Color3.new(0.2, 0.8, 0.3)
     autoLootButton.Text = "🎁 Auto-TP Presents: OFF"
     autoLootButton.BackgroundColor3 = Color3.new(0.8, 0.6, 0)
-    statusLabel.Text = "Status: Ready | Press L for Auto-Loot"
+    noclipButton.Text = noclipEnabled and "👻 No Clip: ON" or "👻 No Clip: OFF"
+    noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0.2) or Color3.new(0.4, 0.2, 0.8)
+    statusLabel.Text = "Status: Ready | N=NoClip"
     statusLabel.TextColor3 = Color3.new(0.6, 0.9, 0.6)
 end)
 
@@ -959,6 +1039,7 @@ print("🟢 === FEATURES ===")
 print("🟢 Fly: GUI Button ONLY (F key removed)")
 print("🟢 Speed Toggle: G key OR GUI Button")
 print("🟢 ESP: GUI Button ONLY (E key removed)")
+print("🟢 No Clip: N key OR GUI Button (Phase through walls!)")
 print("🟢 Auto-Loot: L key OR GUI Button (Teleports to 'Gift' models)")
 print("🟢 Teleport Now: GUI Button (Instant teleport)")
 print("🟢 Drag sliders to adjust speeds")
@@ -977,3 +1058,6 @@ if #airdrops > 0 then
 else
     print("⚠️ No 'Gift' models found. Make sure they exist in the game.")
 end
+
+print("")
+print("👻 Press N to phase through walls like Vision!")

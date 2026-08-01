@@ -1,10 +1,15 @@
 --[[
     BREAKDOOR - COMPLETE ALL-IN-ONE SCRIPT (FULLY FIXED)
-    Version: 2.4
-    Fixes:
-        - Speed lock (bugs can't slow you down)
-        - Auto-ESP refresh (bugs always visible)
-        - Persistent GUI (stays on death)
+    Version: 2.5
+    Features:
+        - Fly (GUI only - F key removed)
+        - Speed Boost (G key) - BUGS CAN'T SLOW YOU!
+        - ESP (GUI only - E key removed) - AUTO-REFRESHES!
+        - No Clip (N key) - Phase through walls!
+        - Auto-TP to Presents (L key) - WORKS WITH "Gift" MODELS
+        - Teleport Now button
+        - Draggable GUI with sliders
+        - PERSISTENT GUI - Stays on death!
 ]]
 
 local player = game.Players.LocalPlayer
@@ -45,7 +50,7 @@ local currentFlySpeed = CONFIG.FLY_SPEED
 local currentWalkMultiplier = CONFIG.WALK_SPEED_MULTIPLIER
 local lastTeleportTime = 0
 local espObjects = {}
-local guiCreated = false
+local bugEspObjects = {}
 
 print("🔑 Keybinds: G=Speed, L=Auto-Loot, N=NoClip | Fly/ESP = GUI only")
 print("🎁 Looking for 'Gift' models...")
@@ -74,7 +79,6 @@ game:GetService("RunService").Heartbeat:Connect(function()
     end
 end)
 
--- Also lock when speed changes
 humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
     lockSpeed()
 end)
@@ -97,10 +101,10 @@ local function toggleNoclip()
     
     if noclipEnabled then
         print("👻 No Clip: ON - Phasing through walls!")
-        statusLabel.Text = "👻 No Clip: ON - Phasing through walls!"
+        if statusLabel then statusLabel.Text = "👻 No Clip: ON - Phasing through walls!" end
     else
         print("👻 No Clip: OFF")
-        statusLabel.Text = "👻 No Clip: OFF"
+        if statusLabel then statusLabel.Text = "👻 No Clip: OFF" end
     end
 end
 
@@ -280,12 +284,12 @@ task.spawn(function()
             if airdrop then
                 local success, message = teleportToAirdrop(airdrop)
                 if success then
-                    statusLabel.Text = "📍 Teleported to " .. airdrop.Name .. "! (" .. math.floor(dist or 0) .. "m)"
+                    if statusLabel then statusLabel.Text = "📍 Teleported to " .. airdrop.Name .. "! (" .. math.floor(dist or 0) .. "m)" end
                 else
-                    statusLabel.Text = "⏳ " .. message
+                    if statusLabel then statusLabel.Text = "⏳ " .. message end
                 end
             else
-                statusLabel.Text = "❌ No presents found!"
+                if statusLabel then statusLabel.Text = "❌ No presents found!" end
             end
             task.wait(CONFIG.TELEPORT_COOLDOWN)
         else
@@ -295,12 +299,223 @@ task.spawn(function()
 end)
 
 -- ========================================================================
---  ESP SYSTEM (Auto-refresh on respawn)
+--  ESP SYSTEM (FULLY FIXED - Shows bugs forever!)
 -- ========================================================================
 
-local function createESP(targetPlayer)
+-- Function to check if an object is a bug
+local function isBug(object)
+    if not object then return false end
+    
+    -- Skip players
+    if object:IsA("Model") and object:FindFirstChild("Humanoid") then
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p.Character == object then
+                return false
+            end
+        end
+    end
+    
+    local name = object.Name:lower()
+    local parentName = object.Parent and object.Parent.Name:lower() or ""
+    
+    -- Check for bug-related names
+    local bugKeywords = {"bug", "enemy", "monster", "zombie", "creature", "spider",
+                         "roach", "ant", "bee", "wasp", "fly", "crawler", "grub",
+                         "larva", "insect", "scorpion", "mite", "tick", "beetle",
+                         "moth", "butterfly", "dragonfly", "mantis", "stinger",
+                         "swarmer", "hive", "infested", "chitin", "carapace"}
+    
+    for _, keyword in ipairs(bugKeywords) do
+        if name:find(keyword) or parentName:find(keyword) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Function to create ESP for a bug
+local function createESPForBug(bugModel)
+    if not bugModel or not bugModel:IsA("Model") then return end
+    if bugEspObjects[bugModel] then return end
+    
+    local humanoid = bugModel:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    print("🐛 Found bug: " .. bugModel.Name)
+    
+    local espData = {}
+    
+    -- Highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Parent = bugModel
+    highlight.FillColor = Color3.new(1, 0, 0)
+    highlight.FillTransparency = 0.2
+    highlight.OutlineColor = Color3.new(1, 0.5, 0)
+    highlight.OutlineTransparency = 0.1
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    
+    -- Find a part to attach billboard to
+    local attachPart = bugModel:FindFirstChild("Head") or 
+                       bugModel:FindFirstChild("HumanoidRootPart") or
+                       bugModel:FindFirstChild("Torso")
+    
+    if not attachPart then
+        for _, child in ipairs(bugModel:GetChildren()) do
+            if child:IsA("BasePart") then
+                attachPart = child
+                break
+            end
+        end
+    end
+    
+    local billboard = nil
+    if attachPart then
+        billboard = Instance.new("BillboardGui")
+        billboard.Parent = attachPart
+        billboard.Size = UDim2.new(0, 120, 0, 35)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.AlwaysOnTop = true
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = billboard
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+        nameLabel.Text = "🐛 " .. bugModel.Name
+        nameLabel.TextColor3 = Color3.new(1, 0.5, 0)
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextStrokeTransparency = 0.3
+        nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        
+        local healthBg = Instance.new("Frame")
+        healthBg.Parent = billboard
+        healthBg.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+        healthBg.BackgroundTransparency = 0.5
+        healthBg.Size = UDim2.new(1, 0, 0.15, 0)
+        healthBg.Position = UDim2.new(0, 0, 0.6, 0)
+        healthBg.BorderSizePixel = 0
+        
+        local healthBar = Instance.new("Frame")
+        healthBar.Parent = healthBg
+        healthBar.BackgroundColor3 = Color3.new(0, 1, 0)
+        healthBar.BackgroundTransparency = 0.1
+        healthBar.Size = UDim2.new(1, 0, 1, 0)
+        healthBar.BorderSizePixel = 0
+        
+        local healthLabel = Instance.new("TextLabel")
+        healthLabel.Parent = healthBg
+        healthLabel.BackgroundTransparency = 1
+        healthLabel.Size = UDim2.new(1, 0, 1, 0)
+        healthLabel.Text = "100%"
+        healthLabel.TextColor3 = Color3.new(1, 1, 1)
+        healthLabel.TextSize = 10
+        healthLabel.Font = Enum.Font.GothamBold
+        
+        espData.billboard = billboard
+        espData.healthBar = healthBar
+        espData.healthLabel = healthLabel
+    end
+    
+    espData.highlight = highlight
+    espData.targetObject = bugModel
+    espData.updateHealth = function()
+        if humanoid and humanoid.Health then
+            local healthPercent = humanoid.Health / humanoid.MaxHealth
+            if espData.healthBar then
+                espData.healthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
+                if espData.healthLabel then
+                    espData.healthLabel.Text = math.floor(humanoid.Health) .. "%"
+                end
+                if healthPercent > 0.6 then
+                    espData.healthBar.BackgroundColor3 = Color3.new(0, 1, 0)
+                elseif healthPercent > 0.3 then
+                    espData.healthBar.BackgroundColor3 = Color3.new(1, 1, 0)
+                else
+                    espData.healthBar.BackgroundColor3 = Color3.new(1, 0, 0)
+                end
+            end
+        end
+    end
+    
+    bugEspObjects[bugModel] = espData
+    espData.updateHealth()
+    
+    return espData
+end
+
+-- Function to remove ESP from a bug
+local function removeESPFromBug(bugModel)
+    local espData = bugEspObjects[bugModel]
+    if espData then
+        if espData.highlight then espData.highlight:Destroy() end
+        if espData.billboard then espData.billboard:Destroy() end
+        bugEspObjects[bugModel] = nil
+    end
+end
+
+-- Function to clear all bug ESP
+local function clearAllBugESP()
+    for target, _ in pairs(bugEspObjects) do
+        removeESPFromBug(target)
+    end
+    bugEspObjects = {}
+end
+
+-- Function to scan for ALL bugs
+local function scanForAllBugs()
+    if not espEnabled then return end
+    
+    local foundBugs = 0
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and isBug(obj) then
+            if not bugEspObjects[obj] then
+                createESPForBug(obj)
+                foundBugs = foundBugs + 1
+            end
+        end
+    end
+    if foundBugs > 0 then
+        print("🐛 Found " .. foundBugs .. " new bugs!")
+    end
+end
+
+-- Scan every 2 seconds (catches newly spawned bugs)
+task.spawn(function()
+    while true do
+        scanForAllBugs()
+        task.wait(2)
+    end
+end)
+
+-- Watch for new objects being added
+workspace.DescendantAdded:Connect(function(obj)
+    task.wait(0.3)
+    if espEnabled and obj:IsA("Model") and isBug(obj) then
+        createESPForBug(obj)
+    end
+end)
+
+-- Update bug health bars
+game:GetService("RunService").Heartbeat:Connect(function()
+    for bugModel, espData in pairs(bugEspObjects) do
+        if bugModel and bugModel.Parent then
+            espData.updateHealth()
+        else
+            removeESPFromBug(bugModel)
+        end
+    end
+end)
+
+-- ========================================================================
+--  PLAYER ESP (Separate from bugs)
+-- ========================================================================
+
+local playerEspObjects = {}
+
+local function createPlayerESP(targetPlayer)
     if targetPlayer == player then return end
-    if espObjects[targetPlayer] then return end
+    if playerEspObjects[targetPlayer] then return end
     
     local targetCharacter = targetPlayer.Character
     if not targetCharacter then return end
@@ -413,34 +628,42 @@ local function createESP(targetPlayer)
     espData.updateDistance = updateDistance
     espData.targetPlayer = targetPlayer
     
-    espObjects[targetPlayer] = espData
+    playerEspObjects[targetPlayer] = espData
     updateHealth()
     
     return espData
 end
 
-local function removeESP(targetPlayer)
-    local espData = espObjects[targetPlayer]
+local function removePlayerESP(targetPlayer)
+    local espData = playerEspObjects[targetPlayer]
     if espData then
         if espData.highlight then espData.highlight:Destroy() end
         if espData.billboard then espData.billboard:Destroy() end
-        espObjects[targetPlayer] = nil
+        playerEspObjects[targetPlayer] = nil
     end
 end
 
-local function clearAllESP()
-    for targetPlayer, _ in pairs(espObjects) do
-        removeESP(targetPlayer)
+local function clearAllPlayerESP()
+    for targetPlayer, _ in pairs(playerEspObjects) do
+        removePlayerESP(targetPlayer)
     end
-    espObjects = {}
+    playerEspObjects = {}
 end
 
-local function refreshESP()
+local function refreshAllESP()
     if not espEnabled then return end
-    clearAllESP()
+    
+    -- Clear both
+    clearAllBugESP()
+    clearAllPlayerESP()
+    
+    -- Recreate bug ESP
+    scanForAllBugs()
+    
+    -- Recreate player ESP
     for _, targetPlayer in ipairs(game.Players:GetPlayers()) do
         if targetPlayer ~= player then
-            createESP(targetPlayer)
+            createPlayerESP(targetPlayer)
         end
     end
 end
@@ -449,24 +672,25 @@ local function toggleESP()
     espEnabled = not espEnabled
     
     if espEnabled then
-        refreshESP()
-        print("👁️ ESP: ON")
+        refreshAllESP()
+        print("👁️ ESP: ON - All bugs and players visible!")
     else
-        clearAllESP()
+        clearAllBugESP()
+        clearAllPlayerESP()
         print("👁️ ESP: OFF")
     end
 end
 
--- Update ESP loop
+-- Update player ESP loop
 game:GetService("RunService").Heartbeat:Connect(function()
     if not espEnabled then return end
     
-    for targetPlayer, espData in pairs(espObjects) do
+    for targetPlayer, espData in pairs(playerEspObjects) do
         if targetPlayer and targetPlayer.Character and targetPlayer.Character.Parent then
             espData.updateHealth()
             espData.updateDistance()
         else
-            removeESP(targetPlayer)
+            removePlayerESP(targetPlayer)
         end
     end
 end)
@@ -475,19 +699,19 @@ end)
 game.Players.PlayerAdded:Connect(function(newPlayer)
     if espEnabled and newPlayer ~= player then
         task.wait(1)
-        createESP(newPlayer)
+        createPlayerESP(newPlayer)
     end
 end)
 
 game.Players.PlayerRemoving:Connect(function(leavingPlayer)
-    removeESP(leavingPlayer)
+    removePlayerESP(leavingPlayer)
 end)
 
--- Watch for character changes (respawns)
+-- Watch for character changes
 local function onCharacterChanged()
     task.wait(0.5)
     if espEnabled then
-        refreshESP()
+        refreshAllESP()
         print("👁️ ESP refreshed after respawn!")
     end
 end
@@ -538,7 +762,7 @@ local function stopFly()
 end
 
 -- ========================================================================
---  CREATE GUI (PERSISTENT - Stays on death)
+--  CREATE PERSISTENT GUI
 -- ========================================================================
 
 local function createGUI()
@@ -552,7 +776,7 @@ local function createGUI()
     screenGui.Parent = player.PlayerGui
     screenGui.Name = "BreakDoorGUI"
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.ResetOnSpawn = false -- THIS KEEPS IT ON DEATH!
+    screenGui.ResetOnSpawn = false -- KEEPS IT ON DEATH!
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Parent = screenGui
@@ -946,7 +1170,6 @@ createGUI()
 -- Recreate GUI on respawn if it disappears
 player.CharacterAdded:Connect(function()
     task.wait(0.5)
-    -- Check if GUI still exists
     if not player.PlayerGui:FindFirstChild("BreakDoorGUI") then
         createGUI()
         print("🔄 GUI recreated after respawn!")
@@ -965,7 +1188,6 @@ game:GetService("UserInputService").InputBegan:Connect(function(input, gameProce
     -- G = Toggle Speed
     if input.KeyCode == CONFIG.KEYBINDS.speed then
         toggleSpeed()
-        -- Update button text
         local gui = player.PlayerGui:FindFirstChild("BreakDoorGUI")
         if gui then
             local speedBtn = gui:FindFirstChild("Frame"):FindFirstChild("speedButton")
@@ -1009,13 +1231,14 @@ end)
 
 -- Initial ESP setup
 task.wait(1)
-refreshESP()
+refreshAllESP()
 
+print("")
 print("✅ BreakDoor COMPLETE Script Loaded!")
 print("🟢 === FEATURES ===")
 print("🟢 Fly: GUI Button ONLY (F key removed)")
 print("🟢 Speed Toggle: G key OR GUI Button (BUGS CAN'T SLOW YOU!)")
-print("🟢 ESP: GUI Button ONLY (E key removed) (AUTO-REFRESH!)")
+print("🟢 ESP: GUI Button ONLY (E key removed) (AUTO-REFRESHES!)")
 print("🟢 No Clip: N key OR GUI Button (Phase through walls!)")
 print("🟢 Auto-Loot: L key OR GUI Button (Teleports to 'Gift' models)")
 print("🟢 Teleport Now: GUI Button (Instant teleport)")
@@ -1036,6 +1259,7 @@ else
 end
 
 print("")
+print("🐛 BUG ESP: Scanning every 2 seconds for new bugs!")
 print("🛡️ BUGS CAN'T SLOW YOU DOWN - Speed is LOCKED!")
 print("👁️ ESP AUTO-REFRESHES - Bugs always visible!")
 print("💀 GUI PERSISTENT - Stays on death!")
